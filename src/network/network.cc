@@ -150,7 +150,10 @@ void Connection::prune_sockets( void )
 }
 
 Connection::Socket::Socket( int family )
-  : _fd( socket( family, SOCK_DGRAM, 0 ) )
+    : _fd( socket( family, SOCK_DGRAM, 0 ) ),
+    RTT_hit( false ),
+    SRTT( 1000 ),
+    RTTVAR( 500 )
 {
   if ( _fd < 0 ) {
     throw NetworkException( "socket", errno );
@@ -233,9 +236,6 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
     last_heard( -1 ),
     last_port_choice( -1 ),
     last_roundtrip_success( -1 ),
-    RTT_hit( false ),
-    SRTT( 1000 ),
-    RTTVAR( 500 ),
     have_send_exception( false ),
     send_exception()
 {
@@ -353,9 +353,6 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
     last_heard( -1 ),
     last_port_choice( -1 ),
     last_roundtrip_success( -1 ),
-    RTT_hit( false ),
-    SRTT( 1000 ),
-    RTTVAR( 500 ),
     have_send_exception( false ),
     send_exception()
 {
@@ -421,13 +418,13 @@ void Connection::send( string s )
 string Connection::recv( void )
 {
   assert( !socks.empty() );
-  for ( std::deque< Socket >::const_iterator it = socks.begin();
+  for ( std::deque< Socket >::iterator it = socks.begin();
 	it != socks.end();
 	it++ ) {
     bool islast = (it + 1) == socks.end();
     string payload;
     try {
-      payload = recv_one( it->fd(), !islast );
+      payload = recv_one( *it, !islast );
     } catch ( NetworkException & e ) {
       if ( (e.the_errno == EAGAIN)
 	   || (e.the_errno == EWOULDBLOCK) ) {
@@ -446,8 +443,9 @@ string Connection::recv( void )
   return "";
 }
 
-string Connection::recv_one( int sock_to_recv, bool nonblocking )
+string Connection::recv_one( Socket &sock, bool nonblocking )
 {
+  int sock_to_recv = sock.fd();
   /* receive source address, ECN, and payload in msghdr structure */
   Addr packet_remote_addr;
   struct msghdr header;
@@ -526,16 +524,16 @@ string Connection::recv_one( int sock_to_recv, bool nonblocking )
       double R = timestamp_diff( now, p.timestamp_reply );
 
       if ( R < 5000 ) { /* ignore large values, e.g. server was Ctrl-Zed */
-	if ( !RTT_hit ) { /* first measurement */
-	  SRTT = R;
-	  RTTVAR = R / 2;
-	  RTT_hit = true;
+	if ( !sock.RTT_hit ) { /* first measurement */
+	  sock.SRTT = R;
+	  sock.RTTVAR = R / 2;
+	  sock.RTT_hit = true;
 	} else {
 	  const double alpha = 1.0 / 8.0;
 	  const double beta = 1.0 / 4.0;
 	  
-	  RTTVAR = (1 - beta) * RTTVAR + ( beta * fabs( SRTT - R ) );
-	  SRTT = (1 - alpha) * SRTT + ( alpha * R );
+	  sock.RTTVAR = (1 - beta) * sock.RTTVAR + ( beta * fabs( sock.SRTT - R ) );
+	  sock.SRTT = (1 - alpha) * sock.SRTT + ( alpha * R );
 	}
       }
     }
@@ -614,7 +612,7 @@ uint16_t Network::timestamp_diff( uint16_t tsnew, uint16_t tsold )
 
 uint64_t Connection::timeout( void ) const
 {
-  uint64_t RTO = lrint( ceil( SRTT + 4 * RTTVAR ) );
+  uint64_t RTO = lrint( ceil( active_sock().SRTT + 4 * active_sock().RTTVAR ) );
   if ( RTO < MIN_RTO ) {
     RTO = MIN_RTO;
   } else if ( RTO > MAX_RTO ) {

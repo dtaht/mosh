@@ -116,6 +116,10 @@ namespace Network {
       int _fd;
 
     public:
+      bool RTT_hit;
+      double SRTT;
+      double RTTVAR;
+
       int fd( void ) const { return _fd; }
       Socket( int family );
       ~Socket();
@@ -148,10 +152,6 @@ namespace Network {
     uint64_t last_port_choice;
     uint64_t last_roundtrip_success; /* transport layer needs to tell us this */
 
-    bool RTT_hit;
-    double SRTT;
-    double RTTVAR;
-
     /* Exception from send(), to be delivered if the frontend asks for it,
        without altering control flow. */
     bool have_send_exception;
@@ -162,10 +162,11 @@ namespace Network {
     void hop_port( void );
 
     int sock( void ) const { assert( !socks.empty() ); return socks.back().fd(); }
+    Socket active_sock( void ) const { return socks.back(); }
 
     void prune_sockets( void );
 
-    string recv_one( int sock_to_recv, bool nonblocking );
+    string recv_one( Socket &sock_to_recv, bool nonblocking );
 
   public:
     Connection( const char *desired_ip, const char *desired_port ); /* server */
@@ -181,7 +182,7 @@ namespace Network {
     bool get_has_remote_addr( void ) const { return has_remote_addr; }
 
     uint64_t timeout( void ) const;
-    double get_SRTT( void ) const { return SRTT; }
+    double get_SRTT( void ) const { return active_sock().SRTT; }
 
     const Addr &get_remote_addr( void ) const { return remote_addr; }
     socklen_t get_remote_addr_len( void ) const { return remote_addr_len; }
