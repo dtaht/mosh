@@ -100,15 +100,15 @@ string Packet::tostring( Session *session )
 Packet Connection::new_packet( string &s_payload )
 {
   uint16_t outgoing_timestamp_reply = -1;
-  Socket as = active_sock();
+  Socket *as = active_sock();
 
   uint64_t now = timestamp();
 
-  if ( now - as.saved_timestamp_received_at < 1000 ) { /* we have a recent received timestamp */
+  if ( now - as->saved_timestamp_received_at < 1000 ) { /* we have a recent received timestamp */
     /* send "corrected" timestamp advanced by how long we held it */
-    outgoing_timestamp_reply = as.saved_timestamp + (now - as.saved_timestamp_received_at);
-    as.saved_timestamp = -1;
-    as.saved_timestamp_received_at = 0;
+    outgoing_timestamp_reply = as->saved_timestamp + (now - as->saved_timestamp_received_at);
+    as->saved_timestamp = -1;
+    as->saved_timestamp_received_at = 0;
   }
 
   Packet p( next_seq++, direction, timestamp16(), outgoing_timestamp_reply, s_payload );
@@ -122,7 +122,8 @@ void Connection::hop_port( void )
 
   setup();
   assert( remote_addr_len != 0 );
-  socks.push_back( Socket( remote_addr.sa.sa_family ) );
+  Socket *sock = new Socket( remote_addr.sa.sa_family );
+  socks.push_back( sock );
 
   prune_sockets();
 }
@@ -197,10 +198,10 @@ const std::vector< int > Connection::fds( void ) const
 {
   std::vector< int > ret;
 
-  for ( std::deque< Socket >::const_iterator it = socks.begin();
+  for ( std::deque< Socket* >::const_iterator it = socks.begin();
 	it != socks.end();
 	it++ ) {
-    ret.push_back( it->fd() );
+    ret.push_back( (*it)->fd() );
   }
 
   return ret;
@@ -302,7 +303,8 @@ bool Connection::try_bind( const char *addr, int port_low, int port_high )
     search_high = port_high;
   }
 
-  socks.push_back( Socket( local_addr.sa.sa_family ) );
+  Socket *sock_tmp = new Socket( local_addr.sa.sa_family );
+  socks.push_back( sock_tmp );
   for ( int i = search_low; i <= search_high; i++ ) {
     switch (local_addr.sa.sa_family) {
     case AF_INET:
@@ -369,7 +371,8 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
 
   has_remote_addr = true;
 
-  socks.push_back( Socket( remote_addr.sa.sa_family ) );
+  Socket *sock = new Socket( remote_addr.sa.sa_family );
+  socks.push_back( sock );
 }
 
 void Connection::send( string s )
@@ -395,7 +398,7 @@ void Connection::send( string s )
     send_exception = NetworkException( "sendto", errno );
 
     if ( errno == EMSGSIZE ) {
-      active_sock().MTU = 500; /* payload MTU of last resort */
+      active_sock()->MTU = 500; /* payload MTU of last resort */
     }
   }
 
@@ -416,7 +419,7 @@ void Connection::send( string s )
 string Connection::recv( void )
 {
   assert( !socks.empty() );
-  for ( std::deque< Socket >::iterator it = socks.begin();
+  for ( std::deque< Socket* >::iterator it = socks.begin();
 	it != socks.end();
 	it++ ) {
     bool islast = (it + 1) == socks.end();
@@ -441,9 +444,9 @@ string Connection::recv( void )
   return "";
 }
 
-string Connection::recv_one( Socket &sock, bool nonblocking )
+string Connection::recv_one( Socket *sock, bool nonblocking )
 {
-  int sock_to_recv = sock.fd();
+  int sock_to_recv = sock->fd();
   /* receive source address, ECN, and payload in msghdr structure */
   Addr packet_remote_addr;
   struct msghdr header;
@@ -504,13 +507,14 @@ string Connection::recv_one( Socket &sock, bool nonblocking )
 					  screw up the timestamp and targeting */
 
     if ( p.timestamp != uint16_t(-1) ) {
-      active_sock().saved_timestamp = p.timestamp;
-      active_sock().saved_timestamp_received_at = timestamp();
+      Socket *as = active_sock();
+      as->saved_timestamp = p.timestamp;
+      as->saved_timestamp_received_at = timestamp();
 
       if ( congestion_experienced ) {
 	/* signal counterparty to slow down */
 	/* this will gradually slow the counterparty down to the minimum frame rate */
-	active_sock().saved_timestamp -= CONGESTION_TIMESTAMP_PENALTY;
+	as->saved_timestamp -= CONGESTION_TIMESTAMP_PENALTY;
 	if ( server ) {
 	  fprintf( stderr, "Received explicit congestion notification.\n" );
 	}
@@ -522,16 +526,16 @@ string Connection::recv_one( Socket &sock, bool nonblocking )
       double R = timestamp_diff( now, p.timestamp_reply );
 
       if ( R < 5000 ) { /* ignore large values, e.g. server was Ctrl-Zed */
-	if ( !sock.RTT_hit ) { /* first measurement */
-	  sock.SRTT = R;
-	  sock.RTTVAR = R / 2;
-	  sock.RTT_hit = true;
+	if ( !sock->RTT_hit ) { /* first measurement */
+	  sock->SRTT = R;
+	  sock->RTTVAR = R / 2;
+	  sock->RTT_hit = true;
 	} else {
 	  const double alpha = 1.0 / 8.0;
 	  const double beta = 1.0 / 4.0;
 	  
-	  sock.RTTVAR = (1 - beta) * sock.RTTVAR + ( beta * fabs( sock.SRTT - R ) );
-	  sock.SRTT = (1 - alpha) * sock.SRTT + ( alpha * R );
+	  sock->RTTVAR = (1 - beta) * sock->RTTVAR + ( beta * fabs( sock->SRTT - R ) );
+	  sock->SRTT = (1 - alpha) * sock->SRTT + ( alpha * R );
 	}
       }
     }
@@ -610,13 +614,22 @@ uint16_t Network::timestamp_diff( uint16_t tsnew, uint16_t tsold )
 
 uint64_t Connection::timeout( void ) const
 {
-  uint64_t RTO = lrint( ceil( active_sock().SRTT + 4 * active_sock().RTTVAR ) );
+  uint64_t RTO = lrint( ceil( active_sock()->SRTT + 4 * active_sock()->RTTVAR ) );
   if ( RTO < MIN_RTO ) {
     RTO = MIN_RTO;
   } else if ( RTO > MAX_RTO ) {
     RTO = MAX_RTO;
   }
   return RTO;
+}
+
+Connection::~Connection()
+{
+    for ( std::deque< Socket* >::iterator it = socks.begin();
+	  it != socks.end();
+	  it ++ ) {
+      delete *it;
+    }
 }
 
 Connection::Socket::~Socket()
