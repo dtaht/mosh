@@ -507,14 +507,13 @@ string Connection::recv_one( Socket *sock, bool nonblocking )
 					  screw up the timestamp and targeting */
 
     if ( p.timestamp != uint16_t(-1) ) {
-      Socket *as = active_sock();
-      as->saved_timestamp = p.timestamp;
-      as->saved_timestamp_received_at = timestamp();
+      sock->saved_timestamp = p.timestamp;
+      sock->saved_timestamp_received_at = timestamp();
 
       if ( congestion_experienced ) {
 	/* signal counterparty to slow down */
 	/* this will gradually slow the counterparty down to the minimum frame rate */
-	as->saved_timestamp -= CONGESTION_TIMESTAMP_PENALTY;
+	sock->saved_timestamp -= CONGESTION_TIMESTAMP_PENALTY;
 	if ( server ) {
 	  fprintf( stderr, "Received explicit congestion notification.\n" );
 	}
