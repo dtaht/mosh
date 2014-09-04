@@ -100,14 +100,15 @@ string Packet::tostring( Session *session )
 Packet Connection::new_packet( string &s_payload )
 {
   uint16_t outgoing_timestamp_reply = -1;
+  Socket as = active_sock();
 
   uint64_t now = timestamp();
 
-  if ( now - saved_timestamp_received_at < 1000 ) { /* we have a recent received timestamp */
+  if ( now - as.saved_timestamp_received_at < 1000 ) { /* we have a recent received timestamp */
     /* send "corrected" timestamp advanced by how long we held it */
-    outgoing_timestamp_reply = saved_timestamp + (now - saved_timestamp_received_at);
-    saved_timestamp = -1;
-    saved_timestamp_received_at = 0;
+    outgoing_timestamp_reply = as.saved_timestamp + (now - as.saved_timestamp_received_at);
+    as.saved_timestamp = -1;
+    as.saved_timestamp_received_at = 0;
   }
 
   Packet p( next_seq++, direction, timestamp16(), outgoing_timestamp_reply, s_payload );
@@ -151,6 +152,9 @@ void Connection::prune_sockets( void )
 
 Connection::Socket::Socket( int family )
     : _fd( socket( family, SOCK_DGRAM, 0 ) ),
+    MTU( DEFAULT_SEND_MTU ),
+    saved_timestamp( -1 ),
+    saved_timestamp_received_at( 0 ),
     RTT_hit( false ),
     SRTT( 1000 ),
     RTTVAR( 500 )
@@ -225,13 +229,10 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
     remote_addr(),
     remote_addr_len( 0 ),
     server( true ),
-    MTU( DEFAULT_SEND_MTU ),
     key(),
     session( key ),
     direction( TO_CLIENT ),
     next_seq( 0 ),
-    saved_timestamp( -1 ),
-    saved_timestamp_received_at( 0 ),
     expected_receiver_seq( 0 ),
     last_heard( -1 ),
     last_port_choice( -1 ),
@@ -342,13 +343,10 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
     remote_addr(),
     remote_addr_len( 0 ),
     server( false ),
-    MTU( DEFAULT_SEND_MTU ),
     key( key_str ),
     session( key ),
     direction( TO_SERVER ),
     next_seq( 0 ),
-    saved_timestamp( -1 ),
-    saved_timestamp_received_at( 0 ),
     expected_receiver_seq( 0 ),
     last_heard( -1 ),
     last_port_choice( -1 ),
@@ -397,7 +395,7 @@ void Connection::send( string s )
     send_exception = NetworkException( "sendto", errno );
 
     if ( errno == EMSGSIZE ) {
-      MTU = 500; /* payload MTU of last resort */
+      active_sock().MTU = 500; /* payload MTU of last resort */
     }
   }
 
@@ -506,13 +504,13 @@ string Connection::recv_one( Socket &sock, bool nonblocking )
 					  screw up the timestamp and targeting */
 
     if ( p.timestamp != uint16_t(-1) ) {
-      saved_timestamp = p.timestamp;
-      saved_timestamp_received_at = timestamp();
+      active_sock().saved_timestamp = p.timestamp;
+      active_sock().saved_timestamp_received_at = timestamp();
 
       if ( congestion_experienced ) {
 	/* signal counterparty to slow down */
 	/* this will gradually slow the counterparty down to the minimum frame rate */
-	saved_timestamp -= CONGESTION_TIMESTAMP_PENALTY;
+	active_sock().saved_timestamp -= CONGESTION_TIMESTAMP_PENALTY;
 	if ( server ) {
 	  fprintf( stderr, "Received explicit congestion notification.\n" );
 	}
