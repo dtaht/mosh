@@ -116,6 +116,9 @@ namespace Network {
       int _fd;
 
     public:
+      int MTU;
+      uint16_t saved_timestamp;
+      uint64_t saved_timestamp_received_at;
       bool RTT_hit;
       double SRTT;
       double RTTVAR;
@@ -135,8 +138,6 @@ namespace Network {
 
     bool server;
 
-    int MTU;
-
     Base64Key key;
     Session session;
 
@@ -144,8 +145,6 @@ namespace Network {
 
     Direction direction;
     uint64_t next_seq;
-    uint16_t saved_timestamp;
-    uint64_t saved_timestamp_received_at;
     uint64_t expected_receiver_seq;
 
     uint64_t last_heard;
