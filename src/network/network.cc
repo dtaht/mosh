@@ -316,7 +316,7 @@ bool Connection::try_bind( const char *addr, int port_low, int port_high )
       throw NetworkException( "Unknown address family", 0 );
     }
 
-    if ( bind( sock(), &local_addr.sa, local_addr_len ) == 0 ) {
+    if ( bind( sock_tmp->fd(), &local_addr.sa, local_addr_len ) == 0 ) {
       return true;
     } else if ( i == search_high ) { /* last port to search */
       int saved_errno = errno;
