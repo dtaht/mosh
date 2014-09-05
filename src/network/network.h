@@ -132,6 +132,7 @@ namespace Network {
     };
 
     std::deque< Socket* > socks;
+    Socket *send_socket;
     bool has_remote_addr;
     Addr remote_addr;
     socklen_t remote_addr_len;
@@ -160,8 +161,7 @@ namespace Network {
 
     void hop_port( void );
 
-    int sock( void ) const { assert( !socks.empty() ); return socks.back()->fd(); }
-    Socket *active_sock( void ) const { return socks.back(); }
+    int sock( void ) const { assert( !socks.empty() ); return send_socket->fd(); }
 
     void prune_sockets( void );
 
@@ -175,14 +175,14 @@ namespace Network {
     void send( string s );
     string recv( void );
     const std::vector< int > fds( void ) const;
-    int get_MTU( void ) const { return active_sock()->MTU; }
+    int get_MTU( void ) const { return send_socket->MTU; }
 
     std::string port( void ) const;
     string get_key( void ) const { return key.printable_key(); }
     bool get_has_remote_addr( void ) const { return has_remote_addr; }
 
     uint64_t timeout( void ) const;
-    double get_SRTT( void ) const { return active_sock()->SRTT; }
+    double get_SRTT( void ) const { return send_socket->SRTT; }
 
     const Addr &get_remote_addr( void ) const { return remote_addr; }
     socklen_t get_remote_addr_len( void ) const { return remote_addr_len; }

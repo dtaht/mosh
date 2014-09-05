@@ -100,15 +100,14 @@ string Packet::tostring( Session *session )
 Packet Connection::new_packet( string &s_payload )
 {
   uint16_t outgoing_timestamp_reply = -1;
-  Socket *as = active_sock();
 
   uint64_t now = timestamp();
 
-  if ( now - as->saved_timestamp_received_at < 1000 ) { /* we have a recent received timestamp */
+  if ( now - send_socket->saved_timestamp_received_at < 1000 ) { /* we have a recent received timestamp */
     /* send "corrected" timestamp advanced by how long we held it */
-    outgoing_timestamp_reply = as->saved_timestamp + (now - as->saved_timestamp_received_at);
-    as->saved_timestamp = -1;
-    as->saved_timestamp_received_at = 0;
+    outgoing_timestamp_reply = send_socket->saved_timestamp + (now - send_socket->saved_timestamp_received_at);
+    send_socket->saved_timestamp = -1;
+    send_socket->saved_timestamp_received_at = 0;
   }
 
   Packet p( next_seq++, direction, timestamp16(), outgoing_timestamp_reply, s_payload );
@@ -398,7 +397,7 @@ void Connection::send( string s )
     send_exception = NetworkException( "sendto", errno );
 
     if ( errno == EMSGSIZE ) {
-      active_sock()->MTU = 500; /* payload MTU of last resort */
+      send_socket->MTU = 500; /* payload MTU of last resort */
     }
   }
 
@@ -613,7 +612,7 @@ uint16_t Network::timestamp_diff( uint16_t tsnew, uint16_t tsold )
 
 uint64_t Connection::timeout( void ) const
 {
-  uint64_t RTO = lrint( ceil( active_sock()->SRTT + 4 * active_sock()->RTTVAR ) );
+  uint64_t RTO = lrint( ceil( send_socket->SRTT + 4 * send_socket->RTTVAR ) );
   if ( RTO < MIN_RTO ) {
     RTO = MIN_RTO;
   } else if ( RTO > MAX_RTO ) {
