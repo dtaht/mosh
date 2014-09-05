@@ -225,7 +225,7 @@ private:
 
 Connection::Connection( const char *desired_ip, const char *desired_port ) /* server */
   : socks(),
-    has_remote_addr( false ),
+    send_socket( NULL ),
     remote_addr(),
     remote_addr_len( 0 ),
     server( true ),
@@ -340,7 +340,7 @@ bool Connection::try_bind( const char *addr, int port_low, int port_high )
 
 Connection::Connection( const char *key_str, const char *ip, const char *port ) /* client */
   : socks(),
-    has_remote_addr( false ),
+    send_socket( NULL ),
     remote_addr(),
     remote_addr_len( 0 ),
     server( false ),
@@ -368,15 +368,14 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
   remote_addr_len = ai.res->ai_addrlen;
   memcpy( &remote_addr.sa, ai.res->ai_addr, remote_addr_len );
 
-  has_remote_addr = true;
+  send_socket = new Socket( remote_addr.sa.sa_family );
 
-  Socket *sock = new Socket( remote_addr.sa.sa_family );
-  socks.push_back( sock );
+  socks.push_back( send_socket );
 }
 
 void Connection::send( string s )
 {
-  if ( !has_remote_addr ) {
+  if ( !has_remote_addr() ) {
     return;
   }
 
@@ -404,7 +403,7 @@ void Connection::send( string s )
   uint64_t now = timestamp();
   if ( server ) {
     if ( now - last_heard > SERVER_ASSOCIATION_TIMEOUT ) {
-      has_remote_addr = false;
+      send_socket = NULL;
       fprintf( stderr, "Server now detached from client.\n" );
     }
   } else { /* client */
@@ -539,7 +538,7 @@ string Connection::recv_one( Socket *sock, bool nonblocking )
     }
 
     /* auto-adjust to remote host */
-    has_remote_addr = true;
+    send_socket = sock;
     last_heard = timestamp();
 
     if ( server ) { /* only client can roam */

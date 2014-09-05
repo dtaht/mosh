@@ -133,7 +133,7 @@ namespace Network {
 
     std::deque< Socket* > socks;
     Socket *send_socket;
-    bool has_remote_addr;
+    bool has_remote_addr( void ) const { return send_socket != NULL; };
     Addr remote_addr;
     socklen_t remote_addr_len;
 
@@ -179,7 +179,7 @@ namespace Network {
 
     std::string port( void ) const;
     string get_key( void ) const { return key.printable_key(); }
-    bool get_has_remote_addr( void ) const { return has_remote_addr; }
+    bool get_has_remote_addr( void ) const { return has_remote_addr(); }
 
     uint64_t timeout( void ) const;
     double get_SRTT( void ) const { return send_socket->SRTT; }
