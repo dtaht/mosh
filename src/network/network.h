@@ -71,12 +71,15 @@ namespace Network {
     uint64_t seq;
     Direction direction;
     uint16_t timestamp, timestamp_reply;
+    uint16_t probe;
     string payload;
     
     Packet( uint64_t s_seq, Direction s_direction,
-	    uint16_t s_timestamp, uint16_t s_timestamp_reply, string s_payload )
+	    uint16_t s_timestamp, uint16_t s_timestamp_reply,
+            uint16_t s_probe, string s_payload )
       : seq( s_seq ), direction( s_direction ),
-	timestamp( s_timestamp ), timestamp_reply( s_timestamp_reply ), payload( s_payload )
+	timestamp( s_timestamp ), timestamp_reply( s_timestamp_reply ),
+        probe( s_probe ), payload( s_payload )
     {}
     
     Packet( string coded_packet, Session *session );
@@ -157,7 +160,7 @@ namespace Network {
     bool have_send_exception;
     NetworkException send_exception;
 
-    Packet new_packet( string &s_payload );
+    Packet new_packet( Socket *sock, uint16_t probe, string &s_payload );
 
     void hop_port( void );
 
@@ -165,6 +168,7 @@ namespace Network {
 
     void prune_sockets( void );
 
+    bool send_probe( Socket *sock );
     string recv_one( Socket *sock_to_recv, bool nonblocking );
 
   public:
@@ -173,6 +177,7 @@ namespace Network {
     ~Connection();
 
     void send( string s );
+    void send_probes( void );
     string recv( void );
     const std::vector< int > fds( void ) const;
     int get_MTU( void ) const { return send_socket->MTU; }
