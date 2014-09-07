@@ -35,6 +35,7 @@
 
 #include <stdint.h>
 #include <deque>
+#include <map>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <string>
@@ -71,19 +72,21 @@ namespace Network {
     uint64_t seq;
     Direction direction;
     uint16_t timestamp, timestamp_reply;
-    uint16_t probe;
+    uint16_t sock_id;
+    uint16_t flags;
     string payload;
-    
+
     Packet( uint64_t s_seq, Direction s_direction,
 	    uint16_t s_timestamp, uint16_t s_timestamp_reply,
-            uint16_t s_probe, string s_payload )
+            uint16_t s_sock_id, uint16_t s_flags, string s_payload )
       : seq( s_seq ), direction( s_direction ),
 	timestamp( s_timestamp ), timestamp_reply( s_timestamp_reply ),
-        probe( s_probe ), payload( s_payload )
+        sock_id( s_sock_id ), flags( s_flags ), payload( s_payload )
     {}
-    
+
     Packet( string coded_packet, Session *session );
-    
+
+    bool is_probe( void );
     string tostring( Session *session );
   };
 
@@ -99,6 +102,7 @@ namespace Network {
     static const int DEFAULT_SEND_MTU = 1300;
     static const uint64_t MIN_RTO = 50; /* ms */
     static const uint64_t MAX_RTO = 1000; /* ms */
+    static const uint64_t MIN_PROBE_INTERVAL = 1000;
 
     static const int PORT_RANGE_LOW  = 60001;
     static const int PORT_RANGE_HIGH = 60999;
@@ -117,6 +121,7 @@ namespace Network {
     {
     private:
       int _fd;
+      static uint16_t next_sock_id;
 
     public:
       int MTU;
@@ -125,9 +130,14 @@ namespace Network {
       bool RTT_hit;
       double SRTT;
       double RTTVAR;
+      /* The message nonce should also have a Socket ID.  Otherwise, if a data
+         packet A is sent, and then a probe B, A will be discarded if B arrives
+         first.  Same for sending B then A: B is discarded. */
+      uint64_t next_seq;
+      uint16_t sock_id;
 
       int fd( void ) const { return _fd; }
-      Socket( int family );
+      Socket( int family, uint16_t id=Socket::next_sock_id++ );
       ~Socket();
 
       Socket( const Socket & other );
@@ -148,8 +158,8 @@ namespace Network {
     void setup( void );
 
     Direction direction;
-    uint64_t next_seq;
-    uint64_t expected_receiver_seq;
+    /* Associate a remote sock ID to its receiver seq. */
+    std::map< uint16_t, uint64_t > expected_receiver_seq;
 
     uint64_t last_heard;
     uint64_t last_port_choice;
@@ -168,7 +178,8 @@ namespace Network {
 
     void prune_sockets( void );
 
-    bool send_probe( Socket *sock );
+    bool send_probes( Socket *sock );
+    bool send_probe( Socket *sock, Addr *addr, socklen_t addr_len );
     string recv_one( Socket *sock_to_recv, bool nonblocking );
 
   public:

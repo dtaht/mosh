@@ -61,8 +61,7 @@ using namespace Crypto;
 
 const uint64_t DIRECTION_MASK = uint64_t(1) << 63;
 const uint64_t SEQUENCE_MASK = uint64_t(-1) ^ DIRECTION_MASK;
-const uint16_t IS_PROBE = uint16_t(1) << 15;
-const uint16_t PROBE_NUM = uint16_t(-1) ^ IS_PROBE;
+const uint16_t PROBE_FLAG = 1;
 
 /* Read in packet from coded string */
 Packet::Packet( string coded_packet, Session *session )
@@ -77,14 +76,20 @@ Packet::Packet( string coded_packet, Session *session )
   direction = (message.nonce.val() & DIRECTION_MASK) ? TO_CLIENT : TO_SERVER;
   seq = message.nonce.val() & SEQUENCE_MASK;
 
-  dos_assert( message.text.size() >= 2 * sizeof( uint16_t ) );
+  dos_assert( message.text.size() >= 4 * sizeof( uint16_t ) );
 
   uint16_t *data = (uint16_t *)message.text.data();
   timestamp = be16toh( data[ 0 ] );
   timestamp_reply = be16toh( data[ 1 ] );
-  probe = be16toh( data[2] );
+  sock_id = be16toh( data[2] );
+  flags = be16toh( data[3] );
 
   payload = string( message.text.begin() + 2 * sizeof( uint16_t ), message.text.end() );
+}
+
+bool Packet::is_probe( void )
+{
+  return flags & PROBE_FLAG;
 }
 
 /* Output coded string from packet */
@@ -94,15 +99,17 @@ string Packet::tostring( Session *session )
 
   uint16_t ts_net[ 2 ] = { static_cast<uint16_t>( htobe16( timestamp ) ),
                            static_cast<uint16_t>( htobe16( timestamp_reply ) ) };
-  uint16_t probe_net = static_cast<uint16_t>( htobe16( probe ) );
+  uint16_t id_net = static_cast<uint16_t>( htobe16( sock_id ) );
+  uint16_t flags_net = static_cast<uint16_t>( htobe16( flags ) );
 
   string timestamps = string( (char *)ts_net, 2 * sizeof( uint16_t ) );
-  string probe_string = string( (char *)probe_net, sizeof( uint16_t ) );
+  string id_string = string( (char *)id_net, sizeof( uint16_t ) );
+  string flags_string = string( (char *)flags_net, sizeof( uint16_t ) );
 
-  return session->encrypt( Message( Nonce( direction_seq ), timestamps + probe_string + payload ) );
+  return session->encrypt( Message( Nonce( direction_seq ), timestamps + id_string + flags_string + payload ) );
 }
 
-Packet Connection::new_packet( Socket *sock, uint16_t probe, string &s_payload )
+Packet Connection::new_packet( Socket *sock, uint16_t flags, string &s_payload )
 {
   uint16_t outgoing_timestamp_reply = -1;
 
@@ -115,8 +122,8 @@ Packet Connection::new_packet( Socket *sock, uint16_t probe, string &s_payload )
     sock->saved_timestamp_received_at = 0;
   }
 
-  Packet p( next_seq++, direction, timestamp16(), outgoing_timestamp_reply,
-	    probe, s_payload );
+  Packet p( sock->next_seq++, direction, timestamp16(), outgoing_timestamp_reply,
+	    sock->sock_id, flags, s_payload );
 
   return p;
 }
@@ -156,14 +163,16 @@ void Connection::prune_sockets( void )
   }
 }
 
-Connection::Socket::Socket( int family )
+Connection::Socket::Socket( int family, uint16_t id )
     : _fd( socket( family, SOCK_DGRAM, 0 ) ),
     MTU( DEFAULT_SEND_MTU ),
     saved_timestamp( -1 ),
     saved_timestamp_received_at( 0 ),
     RTT_hit( false ),
     SRTT( 1000 ),
-    RTTVAR( 500 )
+    RTTVAR( 500 ),
+    next_seq( 0 ),
+    sock_id( id )
 {
   if ( _fd < 0 ) {
     throw NetworkException( "socket", errno );
@@ -238,8 +247,7 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
     key(),
     session( key ),
     direction( TO_CLIENT ),
-    next_seq( 0 ),
-    expected_receiver_seq( 0 ),
+    expected_receiver_seq(),
     last_heard( -1 ),
     last_port_choice( -1 ),
     last_roundtrip_success( -1 ),
@@ -327,6 +335,7 @@ bool Connection::try_bind( const char *addr, int port_low, int port_high )
     } else if ( i == search_high ) { /* last port to search */
       int saved_errno = errno;
       socks.pop_back();
+      delete sock_tmp;
       char host[ NI_MAXHOST ], serv[ NI_MAXSERV ];
       int errcode = getnameinfo( &local_addr.sa, local_addr_len,
 				 host, sizeof( host ), serv, sizeof( serv ),
@@ -353,8 +362,7 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
     key( key_str ),
     session( key ),
     direction( TO_SERVER ),
-    next_seq( 0 ),
-    expected_receiver_seq( 0 ),
+    expected_receiver_seq(),
     last_heard( -1 ),
     last_port_choice( -1 ),
     last_roundtrip_success( -1 ),
@@ -385,25 +393,27 @@ void Connection::send_probes( void )
   for ( std::deque< Socket* >::iterator it = socks.begin();
 	it != socks.end();
 	it++ ) {
-    bool rc = send_probe( *it );
-    has_fail = has_fail || rc;
+    if ( *it != send_socket ) {
+      bool rc = send_probe( *it, &remote_addr, remote_addr_len );
+      has_fail = has_fail || rc;
+    }
   }
 
   if ( has_fail ) {
-    /* recheck interfaces. */
+    /* Mt: recheck interfaces. */
   }
 }
 
-bool Connection::send_probe( Socket *sock )
+bool Connection::send_probe( Socket *sock, Addr *addr, socklen_t addr_len )
 {
   string empty("");
-  Packet px = new_packet( sock, IS_PROBE, empty );
+  Packet px = new_packet( sock, PROBE_FLAG, empty );
   // sock->last_probe = ( sock->last_probe + 1 ) & PROBE_NUM;
 
   string p = px.tostring( &session );
 
   ssize_t bytes_sent = sendto( sock->fd(), p.data(), p.size(), MSG_DONTWAIT,
-			       &remote_addr.sa, remote_addr_len );
+			       &addr->sa, addr_len );
 
   return ( bytes_sent != static_cast<ssize_t>( p.size() ) );
 }
@@ -535,9 +545,9 @@ string Connection::recv_one( Socket *sock, bool nonblocking )
 
   dos_assert( p.direction == (server ? TO_SERVER : TO_CLIENT) ); /* prevent malicious playback to sender */
 
-  if ( p.seq >= expected_receiver_seq ) { /* don't use out-of-order packets for timestamp or targeting */
-    expected_receiver_seq = p.seq + 1; /* this is security-sensitive because a replay attack could otherwise
-					  screw up the timestamp and targeting */
+  if ( p.seq >= expected_receiver_seq[p.sock_id] ) { /* don't use out-of-order packets for timestamp or targeting */
+    expected_receiver_seq[p.sock_id] = p.seq + 1; /* this is security-sensitive because a replay attack could otherwise
+						     screw up the timestamp and targeting */
 
     if ( p.timestamp != uint16_t(-1) ) {
       sock->saved_timestamp = p.timestamp;
@@ -573,15 +583,15 @@ string Connection::recv_one( Socket *sock, bool nonblocking )
     }
 
     /* auto-adjust to remote host */
-    if ( p.probe & IS_PROBE ) {
-      send_probe( sock );
+    last_heard = timestamp();
+    if ( p.is_probe() ) {
+      send_probe( sock, &packet_remote_addr, remote_addr_len );
       if ( p.payload != "" ) {
 	fprintf(stderr, "Strange: probe with payload received.\n");
       }
       return p.payload;
     }
     send_socket = sock;
-    last_heard = timestamp();
 
     if ( server ) { /* only client can roam */
       if ( remote_addr_len != header.msg_namelen ||
