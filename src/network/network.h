@@ -121,7 +121,6 @@ namespace Network {
     {
     private:
       int _fd;
-      static uint16_t next_sock_id;
 
     public:
       int MTU;
@@ -137,7 +136,7 @@ namespace Network {
       uint16_t sock_id;
 
       int fd( void ) const { return _fd; }
-      Socket( int family, uint16_t id=Socket::next_sock_id++ );
+      Socket( int family, uint16_t id );
       ~Socket();
 
       Socket( const Socket & other );
@@ -145,6 +144,7 @@ namespace Network {
     };
 
     std::deque< Socket* > socks;
+    uint16_t next_sock_id;
     Socket *send_socket;
     bool has_remote_addr( void ) const { return send_socket != NULL; };
     Addr remote_addr;

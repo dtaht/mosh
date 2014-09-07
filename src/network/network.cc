@@ -134,7 +134,7 @@ void Connection::hop_port( void )
 
   setup();
   assert( remote_addr_len != 0 );
-  Socket *sock = new Socket( remote_addr.sa.sa_family );
+  Socket *sock = new Socket( remote_addr.sa.sa_family, next_sock_id++ );
   socks.push_back( sock );
 
   prune_sockets();
@@ -240,6 +240,7 @@ private:
 
 Connection::Connection( const char *desired_ip, const char *desired_port ) /* server */
   : socks(),
+    next_sock_id( 0 ),
     send_socket( NULL ),
     remote_addr(),
     remote_addr_len( 0 ),
@@ -316,7 +317,7 @@ bool Connection::try_bind( const char *addr, int port_low, int port_high )
     search_high = port_high;
   }
 
-  Socket *sock_tmp = new Socket( local_addr.sa.sa_family );
+  Socket *sock_tmp = new Socket( local_addr.sa.sa_family, next_sock_id++ );
   socks.push_back( sock_tmp );
   for ( int i = search_low; i <= search_high; i++ ) {
     switch (local_addr.sa.sa_family) {
@@ -355,6 +356,7 @@ bool Connection::try_bind( const char *addr, int port_low, int port_high )
 
 Connection::Connection( const char *key_str, const char *ip, const char *port ) /* client */
   : socks(),
+    next_sock_id( 0 ),
     send_socket( NULL ),
     remote_addr(),
     remote_addr_len( 0 ),
@@ -382,7 +384,7 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
   remote_addr_len = ai.res->ai_addrlen;
   memcpy( &remote_addr.sa, ai.res->ai_addr, remote_addr_len );
 
-  send_socket = new Socket( remote_addr.sa.sa_family );
+  send_socket = new Socket( remote_addr.sa.sa_family, next_sock_id++ );
 
   socks.push_back( send_socket );
 }
