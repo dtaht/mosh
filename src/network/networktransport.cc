@@ -73,6 +73,11 @@ void Transport<MyState, RemoteState>::recv( void )
   string s( connection.recv() );
   Fragment frag( s );
 
+  if ( s.empty() ) {
+    fprintf( pok, "Received empty transport frame\n" );
+    return;
+  }
+
   if ( fragments.add_fragment( frag ) ) { /* complete packet */
     Instruction inst = fragments.get_assembly();
 
