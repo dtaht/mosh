@@ -199,7 +199,7 @@ namespace Network {
     std::set< Addr > get_host_addresses( void );
     void hop_port( void );
 
-    int sock( void ) const { assert( !socks.empty() ); return send_socket->fd(); }
+    int sock( void ) const { assert( !socks.empty() ); return send_socket ? send_socket->fd() : socks.back()->fd(); }
 
     void prune_sockets( void );
 
@@ -223,7 +223,7 @@ namespace Network {
     bool get_has_remote_addr( void ) const { return has_remote_addr(); }
 
     uint64_t timeout( void ) const;
-    double get_SRTT( void ) const { return send_socket->SRTT; }
+    double get_SRTT( void ) const { return send_socket ? send_socket->SRTT : socks.back()->SRTT; }
 
     const Addr &get_remote_addr( void ) const { return remote_addr; }
     socklen_t get_remote_addr_len( void ) const { return remote_addr_len; }
