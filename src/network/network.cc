@@ -510,7 +510,7 @@ void Connection::send( string s )
 
   string p = px.tostring( &session );
 
-  ssize_t bytes_sent = sendto( sock(), p.data(), p.size(), MSG_DONTWAIT,
+  ssize_t bytes_sent = sendto( sock()->fd(), p.data(), p.size(), MSG_DONTWAIT,
 			       &remote_addr.sa, remote_addr_len );
 
   if ( bytes_sent == static_cast<ssize_t>( p.size() ) ) {
@@ -701,7 +701,7 @@ std::string Connection::port( void ) const
   Addr local_addr;
   socklen_t addrlen = sizeof( local_addr );
 
-  if ( getsockname( sock(), &local_addr.sa, &addrlen ) < 0 ) {
+  if ( getsockname( sock()->fd(), &local_addr.sa, &addrlen ) < 0 ) {
     throw NetworkException( "getsockname", errno );
   }
 
@@ -745,7 +745,7 @@ uint16_t Network::timestamp_diff( uint16_t tsnew, uint16_t tsold )
 
 uint64_t Connection::timeout( void ) const
 {
-  uint64_t RTO = lrint( ceil( send_socket->SRTT + 4 * send_socket->RTTVAR ) );
+  uint64_t RTO = lrint( ceil( sock()->SRTT + 4 * sock()->RTTVAR ) );
   if ( RTO < MIN_RTO ) {
     RTO = MIN_RTO;
   } else if ( RTO > MAX_RTO ) {

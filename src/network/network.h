@@ -199,7 +199,7 @@ namespace Network {
     std::set< Addr > get_host_addresses( void );
     void hop_port( void );
 
-    int sock( void ) const { assert( !socks.empty() ); return send_socket ? send_socket->fd() : socks.back()->fd(); }
+    Socket *sock( void ) const { assert( !socks.empty() ); return send_socket ? send_socket : socks.back(); }
 
     void prune_sockets( void );
 
