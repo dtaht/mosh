@@ -161,8 +161,9 @@ std::set< Addr > Connection::get_host_addresses( void )
   }
 
   end_off = buffer + ifconf.ifc_len;
-  if ( buffer + 2048 <= end_off - (IFNAMSIZ + sizeof( struct ifreq )) )
+  if ( buffer + 2048 <= end_off - (IFNAMSIZ + sizeof( struct ifreq )) ) {
     fprintf(stderr, "Warning, some addresses may be missing (buffer size, please report).\n");
+  }
 
   req = ifconf.ifc_ifcu.ifcu_req;
   req_off = (char *) req;
@@ -199,7 +200,7 @@ std::set< Addr > Connection::get_host_addresses( void )
         fprintf( pok, "can't print addr");
     else
         fprintf( pok, "%s\n", tmp);
-  }
+  } /* end: to be deleted */
 
  end:
   close( ioctl_sock );
