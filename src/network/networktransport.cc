@@ -73,7 +73,6 @@ void Transport<MyState, RemoteState>::recv( void )
   string s( connection.recv() );
 
   if ( s.empty() ) {
-    fprintf( pok, "Received empty transport frame\n" );
     return;
   }
 
