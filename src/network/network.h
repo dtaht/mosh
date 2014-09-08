@@ -203,7 +203,6 @@ namespace Network {
 
     void prune_sockets( void );
 
-    bool send_probes( Socket *sock );
     bool send_probe( Socket *sock, Addr *addr, socklen_t addr_len );
     string recv_one( Socket *sock_to_recv, bool nonblocking );
 
