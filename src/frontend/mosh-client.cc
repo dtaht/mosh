@@ -32,7 +32,6 @@
 
 #include "config.h"
 
-FILE *pok = fopen("/tmp/x", "a");
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -41,6 +40,9 @@ FILE *pok = fopen("/tmp/x", "a");
 #include "crypto.h"
 #include "locale_utils.h"
 #include "fatal_assert.h"
+
+#include <stdio.h>
+FILE *pok = fopen("/tmp/x", "a");
 
 /* These need to be included last because of conflicting defines. */
 /*

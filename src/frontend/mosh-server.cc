@@ -31,7 +31,6 @@
 */
 
 #include "config.h"
-FILE *pok = fopen("/tmp/y", "a");
 
 #include <errno.h>
 #include <locale.h>
@@ -88,6 +87,8 @@ FILE *pok = fopen("/tmp/y", "a");
 #endif
 
 #include "networktransport.cc"
+
+FILE *pok = fopen("/tmp/y", "a");
 
 typedef Network::Transport< Terminal::Complete, Network::UserStream > ServerConnection;
 
