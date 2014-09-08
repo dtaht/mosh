@@ -667,8 +667,10 @@ string Connection::recv_one( Socket *sock, bool nonblocking )
     /* auto-adjust to remote host */
     last_heard = timestamp();
     if ( p.is_probe() ) {
-      send_probe( sock, &packet_remote_addr, remote_addr_len );
-      if ( p.payload != "" ) {
+      if ( server ) {
+	send_probe( sock, &packet_remote_addr, remote_addr_len );
+      }
+      if ( ! p.payload.empty() ) {
 	fprintf(stderr, "Strange: probe with payload received.\n");
       }
       return p.payload;
