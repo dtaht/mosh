@@ -673,9 +673,9 @@ string Connection::recv_one( Socket *sock, bool nonblocking )
       }
       return p.payload;
     }
-    send_socket = sock;
 
     if ( server ) { /* only client can roam */
+      send_socket = sock;
       if ( remote_addr_len != header.msg_namelen ||
 	   memcmp( &remote_addr, &packet_remote_addr, remote_addr_len ) != 0 ) {
 	remote_addr = packet_remote_addr;
