@@ -31,6 +31,7 @@
 */
 
 #include "config.h"
+FILE *pok = fopen("/tmp/y", "a");
 
 #include <errno.h>
 #include <locale.h>

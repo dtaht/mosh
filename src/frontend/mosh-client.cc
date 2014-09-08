@@ -32,6 +32,7 @@
 
 #include "config.h"
 
+FILE *pok = fopen("/tmp/x", "a");
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>

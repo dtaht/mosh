@@ -175,7 +175,8 @@ std::set< Addr > Connection::get_host_addresses( void )
     req = (struct ifreq *) req_off;
   }
 
-  printf( "%d addresses found :", (int) addresses.size() );
+  /* debug (to be deleted) */
+  fprintf( pok, "%d addresses found :", (int) addresses.size() );
   for ( std::set< Addr >::const_iterator it = addresses.begin();
 	it != addresses.end();
 	it++ ) {
@@ -189,14 +190,14 @@ std::set< Addr > Connection::get_host_addresses( void )
     } else if (family == AF_INET6) {
         addr = &((struct sockaddr_in6*)saddr)->sin6_addr;
     } else {
-        printf("unknown address family: %d\n", family);
+        fprintf(pok, "unknown address family: %d\n", family);
         continue;
     }
     tmp = inet_ntop(family, addr, addrname, INET6_ADDRSTRLEN);
     if (!tmp)
-        perror("can't print addr");
+        fprintf( pok, "can't print addr");
     else
-        printf("%s\n", tmp);
+        fprintf( pok, "%s\n", tmp);
   }
 
  end:
