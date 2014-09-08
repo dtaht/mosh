@@ -362,12 +362,12 @@ int run_server( const char *desired_ip, const char *desired_port,
 
 
   /* detach from terminal */
-  pid_t the_pid = fork();
-  if ( the_pid < 0 ) {
-    perror( "fork" );
-  } else if ( the_pid > 0 ) {
-    _exit( 0 );
-  }
+  //pid_t the_pid = fork();
+  //if ( the_pid < 0 ) {
+  //  perror( "fork" );
+  //} else if ( the_pid > 0 ) {
+  //  _exit( 0 );
+  //}
 
   fprintf( stderr, "\nmosh-server (%s)\n", PACKAGE_STRING );
   fprintf( stderr, "Copyright 2012 Keith Winstein <mosh-devel@mit.edu>\n" );
