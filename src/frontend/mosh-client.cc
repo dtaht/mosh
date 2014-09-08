@@ -102,6 +102,9 @@ int main( int argc, char *argv[] )
   /* Detect edge case */
   fatal_assert( argc > 0 );
 
+  printf("%d\n", getpid());
+  getchar();
+
   /* Get arguments */
   int opt;
   while ( (opt = getopt( argc, argv, "c" )) != -1 ) {
