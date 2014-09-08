@@ -494,6 +494,8 @@ bool Connection::send_probe( Socket *sock, Addr *addr, socklen_t addr_len )
 
   string p = px.tostring( &session );
 
+  fprintf(pok, "Probe sent.\n");
+  fflush(pok);
   ssize_t bytes_sent = sendto( sock->fd(), p.data(), p.size(), MSG_DONTWAIT,
 			       &addr->sa, addr_len );
 
@@ -510,6 +512,8 @@ void Connection::send( string s )
 
   string p = px.tostring( &session );
 
+  fprintf(pok, "send data\n");
+  fflush(pok);
   ssize_t bytes_sent = sendto( sock()->fd(), p.data(), p.size(), MSG_DONTWAIT,
 			       &remote_addr.sa, remote_addr_len );
 
@@ -661,6 +665,9 @@ string Connection::recv_one( Socket *sock, bool nonblocking )
 	  sock->RTTVAR = (1 - beta) * sock->RTTVAR + ( beta * fabs( sock->SRTT - R ) );
 	  sock->SRTT = (1 - alpha) * sock->SRTT + ( alpha * R );
 	}
+      }
+      if ( p.is_probe() ) {
+	fprintf( pok, "Probe received, RTT=%u, SRTT=%u\n", (unsigned int)R, (unsigned int)sock->SRTT );
       }
     }
 
