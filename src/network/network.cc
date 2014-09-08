@@ -106,8 +106,8 @@ string Packet::tostring( Session *session )
   uint16_t flags_net = static_cast<uint16_t>( htobe16( flags ) );
 
   string timestamps = string( (char *)ts_net, 2 * sizeof( uint16_t ) );
-  string id_string = string( (char *)id_net, sizeof( uint16_t ) );
-  string flags_string = string( (char *)flags_net, sizeof( uint16_t ) );
+  string id_string = string( (char *)&id_net, sizeof( uint16_t ) );
+  string flags_string = string( (char *)&flags_net, sizeof( uint16_t ) );
 
   return session->encrypt( Message( Nonce( direction_seq ), timestamps + id_string + flags_string + payload ) );
 }
