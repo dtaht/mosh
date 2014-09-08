@@ -187,6 +187,8 @@ void TransportSender<MyState>::tick( void )
     send_to_receiver( diff );
     mindelay_clock = uint64_t( -1 );
   }
+
+  connection->send_probes();
 }
 
 template <class MyState>
