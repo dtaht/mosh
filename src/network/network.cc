@@ -87,7 +87,7 @@ Packet::Packet( string coded_packet, Session *session )
   sock_id = be16toh( data[2] );
   flags = be16toh( data[3] );
 
-  payload = string( message.text.begin() + 2 * sizeof( uint16_t ), message.text.end() );
+  payload = string( message.text.begin() + 4 * sizeof( uint16_t ), message.text.end() );
 }
 
 bool Packet::is_probe( void )
