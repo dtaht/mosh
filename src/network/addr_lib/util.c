@@ -40,23 +40,27 @@ THE SOFTWARE.
 
 #include "util.h"
 
-int log_level = 0;// LOG_MAX | LOG_DEBUG_ALL;
+int log_level = LOG_MAX | LOG_DEBUG_ALL;
 int log_indent_level;
+FILE *log_output = NULL;
 
 void
 log_msg(int level, const char *format, ...)
 {
     int i;
     va_list args;
+    if (UNLIKELY(log_output == NULL)) {
+        log_output = stderr;
+    }
     if (LOG_GET_LEVEL(log_level) < LOG_GET_LEVEL(level))
         return;
     va_start(args, format);
     for (i = 0; i < log_indent_level; i ++)
-        fprintf(stderr, "  ");
-    vfprintf(stderr, format, args);
+        fprintf(log_output, "  ");
+    vfprintf(log_output, format, args);
     if (level & (LOG_PERROR & ~LOG_ERROR))
-        fprintf(stderr, ": %s.\n", strerror(errno));
-    fflush(stderr);
+        fprintf(log_output, ": %s.\n", strerror(errno));
+    fflush(log_output);
     va_end(args);
 }
 

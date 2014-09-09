@@ -25,6 +25,7 @@ THE SOFTWARE.
 
 #include <sys/time.h>
 #include <string.h>
+#include <stdio.h>
 
 #if defined(__GNUC__) && (__GNUC__ >= 3)
 #define ATTRIBUTE(x) __attribute__ (x)
@@ -44,6 +45,7 @@ THE SOFTWARE.
 
 extern int log_level;
 extern int log_indent_level;
+extern FILE *log_output;
 
 void log_msg(int level, const char *format, ...)
     ATTRIBUTE ((format (printf, 2, 3))) COLD;
