@@ -45,6 +45,7 @@
 #include <assert.h>
 
 #include "crypto.h"
+#include "addresses.h"
 
 using namespace Crypto;
 
@@ -89,36 +90,6 @@ namespace Network {
 
     bool is_probe( void );
     string tostring( Session *session );
-  };
-
-  union Addr {
-    struct sockaddr sa;
-    struct sockaddr_in sin;
-    struct sockaddr_in6 sin6;
-    struct sockaddr_storage ss;
-
-    Addr()
-    : sa() {}
-    Addr( struct sockaddr &s )
-    : sa( s ) {}
-
-    bool operator<( const Addr &a2 ) const {
-      if ( sa.sa_family != a2.sa.sa_family ) {
-        return sa.sa_family < a2.sa.sa_family;
-      }
-
-      if ( sa.sa_family == AF_INET ) {
-        return memcmp( &sin.sin_family, &a2.sin.sin_family, 4 ) < 0;
-      }
-      if ( sa.sa_family == AF_INET6 ) {
-        return memcmp( &sin6.sin6_family, &a2.sin6.sin6_family, 16 ) < 0;
-      }
-      return memcmp( &ss, &a2.ss, sizeof( ss ) ) < 0;
-    }
-
-    bool operator==( const Addr &a2 ) const {
-      return sa.sa_family == a2.sa.sa_family;
-    }
   };
 
   class Connection {
