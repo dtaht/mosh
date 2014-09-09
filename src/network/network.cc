@@ -249,6 +249,7 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
     send_socket( NULL ),
     remote_addr(),
     remote_addr_len( 0 ),
+    host_addresses(),
     server( true ),
     key(),
     session( key ),
@@ -365,6 +366,7 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
     send_socket( NULL ),
     remote_addr(),
     remote_addr_len( 0 ),
+    host_addresses(),
     server( false ),
     key( key_str ),
     session( key ),
@@ -376,6 +378,7 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
     have_send_exception( false ),
     send_exception()
 {
+  std::set< Addr > addresses = host_addresses.get_host_addresses();
   setup();
 
   /* associate socket with remote host and port */

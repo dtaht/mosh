@@ -144,6 +144,7 @@ namespace Network {
     bool has_remote_addr( void ) const { return send_socket != NULL; };
     Addr remote_addr;
     socklen_t remote_addr_len;
+    Addresses host_addresses;
 
     bool server;
 
