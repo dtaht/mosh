@@ -167,7 +167,6 @@ namespace Network {
 
     Packet new_packet( Socket *sock, uint16_t probe, string &s_payload );
 
-    std::set< Addr > get_host_addresses( void );
     void hop_port( void );
 
     Socket *sock( void ) const { assert( !socks.empty() ); return send_socket ? send_socket : socks.back(); }
