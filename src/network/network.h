@@ -139,7 +139,7 @@ namespace Network {
       Socket & operator=( const Socket & other );
     };
 
-    std::deque< Socket* > socks;
+    std::deque< Socket* > socks; /* TODO think to free memory ! */
     uint16_t next_sock_id;
     Socket *send_socket;
     bool has_remote_addr( void ) const { return send_socket != NULL; };
