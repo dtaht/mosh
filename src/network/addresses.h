@@ -66,10 +66,6 @@ namespace Network {
       }
       return memcmp( &ss, &a2.ss, sizeof( ss ) ) < 0;
     }
-
-    bool operator==( const Addr &a2 ) const {
-      return sa.sa_family == a2.sa.sa_family;
-    }
   };
 
   class Addresses {
