@@ -40,7 +40,7 @@ THE SOFTWARE.
 
 #include "util.h"
 
-int log_level = LOG_MAX | LOG_DEBUG_ALL;
+int log_level = 0;// LOG_MAX | LOG_DEBUG_ALL;
 int log_indent_level;
 
 void

@@ -43,13 +43,14 @@ std::set< Addr > Addresses::get_host_addresses( void )
   array_t addresses = get_kernel_addresses();
   array_iter_t iter;
   struct kernel_address *kaddr = NULL;
-  std::set< Addr > result();
+  std::set< Addr > result;
 
-  init_iterator(&iter);
+  init_iterator( &iter );
   while ( NULL != (kaddr = (struct kernel_address *)get_next( addresses, &iter )) ) {
-    result.insert( Addr( kaddr->ss ) );
+    Addr tmp = Addr( kaddr->ss );
+    result.insert( tmp );
   }
-  free_array(&addresses, free);
+  free_array( &addresses, free );
   return result;
 }
 

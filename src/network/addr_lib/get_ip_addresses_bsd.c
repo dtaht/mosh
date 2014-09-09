@@ -86,19 +86,3 @@ array_t get_kernel_addresses()
 
     return addresses;
 }
-
-
-int
-main(int argc, char **argv, char **env)
-{
-    array_t addresses;
-    array_iter_t iter;
-    struct kernel_address *kaddr = NULL;
-    addresses = get_kernel_addresses();
-
-    init_iterator(&iter);
-    while (NULL != (kaddr = get_next(addresses, &iter)))
-        print_address(kaddr);
-
-    return 0;
-}

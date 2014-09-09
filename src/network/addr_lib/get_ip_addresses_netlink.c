@@ -425,26 +425,3 @@ get_kernel_addresses(void)
     addresses = NULL;
     return addr;
 }
-
-/* usage example */
-
-void
-print_all_addr(array_t addrs)
-{
-    array_iter_t iter;
-    struct kernel_address *addr = NULL;
-
-    init_iterator(&iter);
-    while (NULL != (addr = get_next(addrs, &iter)))
-        print_address(addr);
-}
-
-int
-main(int argc, char **argv, char **env)
-{
-    array_t addrs = NULL;
-    kernel_setup(1);
-    addrs = get_kernel_addresses();
-    print_all_addr(addrs);
-    return 0;
-}

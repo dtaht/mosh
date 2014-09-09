@@ -62,7 +62,12 @@ array_add(array_t *array, void *element, cmp_fun_t cmp_fun)
     void **cell;
     int i;
 
-    if (UNLIKELY(!arr) || arr->size <= arr->num_elements) {
+    if (UNLIKELY(!arr)) {
+        arr = malloc(RESIZE(arr, MIN_SIZE));
+        if (!arr) return -1;
+        arr->size = MIN_SIZE;
+        arr->num_elements = 0;
+    } else if (arr->size <= arr->num_elements) {
         array_t tmp;
         int size = arr ? 2 * arr->size : MIN_SIZE;
         tmp = realloc(arr, RESIZE(arr, size));

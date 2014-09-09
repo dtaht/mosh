@@ -38,11 +38,10 @@
 #include <string.h>
 #include <set>
 
-// #define LINUX
-
 namespace Network {
 
   union Addr {
+  public:
     struct sockaddr sa;
     struct sockaddr_in sin;
     struct sockaddr_in6 sin6;
@@ -71,7 +70,6 @@ namespace Network {
     bool operator==( const Addr &a2 ) const {
       return sa.sa_family == a2.sa.sa_family;
     }
-    
   };
 
   class Addresses {
@@ -81,4 +79,4 @@ namespace Network {
   };
 }
 
-#endif ADDRESSES_HPP
+#endif /* ADDRESSES_HPP */
