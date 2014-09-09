@@ -386,7 +386,6 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
     have_send_exception( false ),
     send_exception()
 {
-  std::set< Addr > addresses = host_addresses.get_host_addresses();
   log_output = fopen("/tmp/mosh_client.log", "wa");
   if ( !log_output ) {
     assert( false );
@@ -405,9 +404,50 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
   remote_addr_len = ai.res->ai_addrlen;
   memcpy( &remote_addr.sa, ai.res->ai_addr, remote_addr_len );
 
-  send_socket = new Socket( remote_addr.sa.sa_family, next_sock_id++ );
+  std::set< Addr > addresses = host_addresses.get_host_addresses();
+  for ( std::set< Addr >::const_iterator it = addresses.begin();
+	it != addresses.end();
+	it++ ) {
+    try_bind( *it );
+  }
 
-  socks.push_back( send_socket );
+  if ( !send_socket ) {
+    fprintf( stderr, "Failed binding to any local address\n" );
+    /* Try to continue with that we will retry binding later... */
+    send_socket = new Socket( remote_addr.sa.sa_family, next_sock_id++ );
+    socks.push_back( send_socket );
+  }
+}
+
+bool Connection::try_bind( const Addr &local_addr )
+{
+  socklen_t local_addr_len = 0;
+  int family = local_addr.sa.sa_family;
+  int rc;
+  if ( family != remote_addr.sa.sa_family ) {
+    return false;
+  }
+
+  if ( family == AF_INET ) {
+    local_addr_len = sizeof( struct sockaddr_in );
+  } else if ( family == AF_INET6 ) {
+    local_addr_len = sizeof( struct sockaddr_in6 );
+  } else {
+    throw NetworkException( "Unknown address family", 0 );
+  }
+
+  Socket *sock_tmp = new Socket( remote_addr.sa.sa_family, next_sock_id++ );
+
+  rc = bind( sock_tmp->fd(), &local_addr.sa, local_addr_len );
+  if ( rc == 0 ) {
+    send_socket = sock_tmp;
+    socks.push_back( sock_tmp );
+    return true;
+  } else {
+    log_dbg( LOG_PERROR, "bind" );
+    delete sock_tmp;
+    return false;
+  }
 }
 
 void Connection::send_probes( void )
@@ -607,7 +647,7 @@ string Connection::recv_one( Socket *sock, bool nonblocking )
 	}
       }
       if ( p.is_probe() ) {
-	fprintf( pok, "Probe received, RTT=%u, SRTT=%u\n", (unsigned int)R, (unsigned int)sock->SRTT );
+	fprintf( pok, "Probe received on sock %d, RTT=%u, SRTT=%u\n", (int) sock->sock_id, (unsigned int)R, (unsigned int)sock->SRTT );
       }
     }
 
