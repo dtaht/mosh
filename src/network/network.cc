@@ -431,7 +431,6 @@ bool Connection::send_probe( Socket *sock, Addr *addr, socklen_t addr_len )
 {
   string empty("");
   Packet px = new_packet( sock, PROBE_FLAG, empty );
-  // sock->last_probe = ( sock->last_probe + 1 ) & PROBE_NUM;
 
   string p = px.tostring( &session );
 
