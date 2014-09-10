@@ -170,6 +170,8 @@ void Connection::hop_port( void )
 	  send_socket = tmp;
 	}
       } catch ( NetworkException & e ) {
+	log_dbg( LOG_DEBUG_COMMON, "Failed to rebind %d (%s) : %s.\n", (int)old_sock->sock_id,
+		 old_sock->local_addr.tostring().c_str(), strerror( e.the_errno ) );
       }
     }
 
@@ -494,6 +496,7 @@ void Connection::refill_socks( std::set< Addr > &addresses )
       next_sock_id ++;
       socks.push_back( send_socket );
     } catch ( NetworkException & e ) {
+      log_dbg( LOG_DEBUG_COMMON, "Failed to bind at %s (%s)\n", it->tostring().c_str(), strerror( e.the_errno ) );
     }
   }
 
@@ -545,10 +548,13 @@ bool Connection::send_probe( Socket *sock, Addr *addr, socklen_t addr_len )
 
   string p = px.tostring( &session );
 
-  fprintf(pok, "Probe sent.\n");
-  fflush(pok);
+  log_dbg( LOG_DEBUG_COMMON, "Sending probe on %d (%s).\n", (int)sock->sock_id,
+	   sock->local_addr.tostring().c_str() );
   ssize_t bytes_sent = sendto( sock->fd(), p.data(), p.size(), MSG_DONTWAIT,
 			       &addr->sa, addr_len );
+  if ( bytes_sent < 0 ) {
+    log_dbg( LOG_PERROR, "Sending probe failed" );
+  }
 
   return ( bytes_sent != static_cast<ssize_t>( p.size() ) );
 }
@@ -563,10 +569,14 @@ void Connection::send( string s )
 
   string p = px.tostring( &session );
 
-  fprintf(pok, "send data\n");
-  fflush(pok);
+  log_dbg( LOG_DEBUG_COMMON, "Sending data on %d (%s).\n", (int)send_socket->sock_id,
+	   send_socket->local_addr.tostring().c_str() );
+
   ssize_t bytes_sent = sendto( sock()->fd(), p.data(), p.size(), MSG_DONTWAIT,
 			       &remote_addr.sa, remote_addr_len );
+  if ( bytes_sent < 0 ) {
+    log_dbg( LOG_PERROR, "Sending data failed" );
+  }
 
   if ( bytes_sent == static_cast<ssize_t>( p.size() ) ) {
     have_send_exception = false;
