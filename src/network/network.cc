@@ -417,6 +417,13 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
   memcpy( &remote_addr.sa, ai.res->ai_addr, remote_addr_len );
 
   std::set< Addr > addresses = host_addresses.get_host_addresses( NULL );
+  refill_socks( addresses );
+}
+
+void Connection::refill_socks( std::set< Addr > &addresses )
+{
+  assert( !send_socket && socks.empty() );
+
   for ( std::set< Addr >::const_iterator it = addresses.begin();
 	it != addresses.end();
 	it++ ) {

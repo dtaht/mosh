@@ -174,7 +174,7 @@ namespace Network {
     void hop_port( void );
 
     Socket *sock( void ) const { assert( !socks.empty() ); return send_socket ? send_socket : socks.back(); }
-
+    void refill_socks( std::set< Addr > &addresses );
     void prune_sockets( void );
 
     bool send_probe( Socket *sock, Addr *addr, socklen_t addr_len );
