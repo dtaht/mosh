@@ -38,19 +38,27 @@ extern "C" {
 
 using namespace Network;
 
-std::set< Addr > Addresses::get_host_addresses( void )
+std::set< Addr > Addresses::get_host_addresses( int *has_change )
 {
-  array_t addresses = get_kernel_addresses();
+  array_t kaddrs = get_kernel_addresses();
   array_iter_t iter;
   struct kernel_address *kaddr = NULL;
   std::set< Addr > result;
+  int changed = 0;
 
   init_iterator( &iter );
-  while ( NULL != (kaddr = (struct kernel_address *)get_next( addresses, &iter )) ) {
+  while ( NULL != (kaddr = (struct kernel_address *)get_next( kaddrs, &iter )) ) {
     Addr tmp = Addr( kaddr->ss );
     result.insert( tmp );
   }
-  free_array( &addresses, free );
+  free_array( &kaddrs, free );
+  changed = !( result == addresses );
+  if ( has_change ) {
+      *has_change = changed;
+  }
+  if ( changed ) {
+      addresses = result;
+  }
   return result;
 }
 

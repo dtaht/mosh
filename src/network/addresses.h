@@ -66,11 +66,17 @@ namespace Network {
       }
       return memcmp( &ss, &a2.ss, sizeof( ss ) ) < 0;
     }
+
+    bool operator==( const Addr &a2 ) const {
+      return sa.sa_family == a2.sa.sa_family && memcmp(&ss, &a2.ss, sizeof( ss )) == 0;
+    }
   };
 
   class Addresses {
+  private:
+    std::set< Addr > addresses;
   public:
-    std::set< Addr > get_host_addresses( void );
+    std::set< Addr > get_host_addresses( int *has_change );
     int get_fd( void ); /* to monitor things */
   };
 }
