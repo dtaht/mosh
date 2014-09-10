@@ -137,13 +137,49 @@ Packet Connection::new_packet( Socket *sock, uint16_t flags, string &s_payload )
 
 void Connection::hop_port( void )
 {
-  // std::set< Addr > addresses = get_host_addresses();
   assert( !server );
 
   setup();
   assert( remote_addr_len != 0 );
-  Socket *sock = new Socket( remote_addr.sa.sa_family, next_sock_id++ );
-  socks.push_back( sock );
+
+  int has_change = 0;
+  std::set< Addr > addresses = host_addresses.get_host_addresses( &has_change );
+  if (has_change) {
+    while ( !socks.empty() ) {
+      old_socks.push_back( socks.front() );
+      socks.pop_front();
+    }
+    send_socket = NULL;
+    refill_socks( addresses );
+  } else {
+    std::deque< Socket * > new_socks;
+    while ( !socks.empty() ) {
+      Socket *old_sock = socks.front();
+      socks.pop_front();
+      old_socks.push_back( old_sock );
+
+      if ( send_socket == old_sock ) {
+	send_socket = NULL;
+      }
+      try {
+	Socket *tmp = new Socket( old_sock );
+	socks.push_back( tmp );
+	if ( !send_socket ) {
+	  send_socket = tmp;
+	}
+      } catch ( NetworkException & e ) {
+      }
+    }
+    if ( !send_socket ) {
+      /* This should never happen.  Refill (and probably die). */
+      while ( !socks.empty() ) {
+	Socket *tmp = socks.front();
+	socks.pop_front();
+	delete tmp;
+      }
+      refill_socks( addresses );
+    }
+  }
 
   prune_sockets();
 }
@@ -169,6 +205,21 @@ void Connection::prune_sockets( void )
       socks.pop_front();
     }
   }
+}
+
+Connection::Socket::Socket( Socket *old )
+    : _fd( socket( old->local_addr.sa.sa_family, SOCK_DGRAM, 0 ) ),
+    MTU( old->MTU ),
+    saved_timestamp( -1 ),
+    saved_timestamp_received_at( 0 ),
+    RTT_hit( false ),
+    SRTT( old->SRTT ),
+    RTTVAR( old->RTTVAR ),
+    next_seq( old->next_seq ),
+    sock_id( old->sock_id ),
+    local_addr( old->local_addr )
+{
+  socket_init( 0, 0 );
 }
 
 Connection::Socket::Socket( Addr addr_to_bind, int lower_port, int higher_port, uint16_t id )

@@ -135,6 +135,7 @@ namespace Network {
 
       int fd( void ) const { return _fd; }
       Socket( Addr addr_to_bind, int lower_port, int higher_port, uint16_t id );
+      Socket( Socket *old );
       ~Socket();
 
       Socket( const Socket & other );
@@ -142,6 +143,7 @@ namespace Network {
     };
 
     std::deque< Socket* > socks; /* TODO think to free memory ! */
+    std::deque< Socket* > old_socks; /* Read-only (post hop-port) */
     uint16_t next_sock_id;
     Socket *send_socket;
     bool has_remote_addr( void ) const { return send_socket != NULL; };
