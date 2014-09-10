@@ -569,18 +569,33 @@ void Connection::send( string s )
 
   string p = px.tostring( &session );
 
-  log_dbg( LOG_DEBUG_COMMON, "Sending data on %d (%s).\n", (int)send_socket->sock_id,
-	   send_socket->local_addr.tostring().c_str() );
-
-  select_best_path();
-  ssize_t bytes_sent = sendto( sock()->fd(), p.data(), p.size(), MSG_DONTWAIT,
-			       &remote_addr.sa, remote_addr_len );
-  if ( bytes_sent < 0 ) {
-    send_socket->SRTT += 1000;
-    log_dbg( LOG_PERROR, "Sending data failed" );
+  std::sort( socks.begin(), socks.end(), Socket::srtt_order );
+  ssize_t bytes_sent = -1;
+  for ( std::deque< Socket* >::const_iterator it = socks.begin();
+	it != socks.end();
+	it++ ) {
+    Socket *sock = *it;
+    bytes_sent = sendto( sock->fd(), p.data(), p.size(), MSG_DONTWAIT,
+			 &remote_addr.sa, remote_addr_len );
+    if ( bytes_sent < 0 ) {
+      sock->SRTT += 1000;
+    } else {
+      if ( send_socket != sock ) {
+	log_dbg( LOG_DEBUG_COMMON,
+		 "Switching from socket %d (%s, SRTT=%dms) to %d (%s, SRTT=%dms).\n",
+		 (int)send_socket->sock_id, send_socket->local_addr.tostring().c_str(), (int)send_socket->SRTT,
+		 (int)sock->sock_id, sock->local_addr.tostring().c_str(), (int)sock->SRTT );
+	send_socket = sock;
+      } else {
+	log_dbg( LOG_DEBUG_COMMON, "Data sent on %d (%s).\n",
+		 (int)send_socket->sock_id, send_socket->local_addr.tostring().c_str() );
+      }
+      break;
+    }
   }
 
   if ( bytes_sent == static_cast<ssize_t>( p.size() ) ) {
+    log_dbg( LOG_PERROR, "Sending data failed." );
     have_send_exception = false;
   } else {
     /* Notify the frontend on sendto() failure, but don't alter control flow.
@@ -605,27 +620,6 @@ void Connection::send( string s )
 	 && ( now - last_roundtrip_success > PORT_HOP_INTERVAL ) ) {
       hop_port();
     }
-  }
-}
-
-void Connection::select_best_path( void )
-{
-  Socket *best_socket = send_socket;
-
-  for ( std::deque< Socket* >::iterator it = socks.begin();
-	it != socks.end();
-	it++ ) {
-    if ( (*it)->SRTT < best_socket->SRTT ) {
-      best_socket = *it;
-    }
-  }
-
-  if ( best_socket != send_socket ) {
-    log_dbg( LOG_DEBUG_COMMON,
-	     "Switching from socket %d (%s, SRTT=%dms) to %d (%s, SRTT=%dms).\n",
-	     (int)send_socket->sock_id, send_socket->local_addr.tostring().c_str(), send_socket->SRTT,
-	     (int)best_socket->sock_id, best_socket->local_addr.tostring().c_str(), best_socket->SRTT );
-    send_socket = best_socket;
   }
 }
 
