@@ -134,6 +134,8 @@ namespace Network {
       Addr local_addr;
 
       int fd( void ) const { return _fd; }
+      static bool srtt_order( Socket *s1, Socket *s2 ) { return s1->SRTT < s2->SRTT; }
+      static bool addr_order( Socket *s1, Socket *s2 ) { return s1->local_addr < s2->local_addr; }
       Socket( Addr addr_to_bind, int lower_port, int higher_port, uint16_t id );
       Socket( Socket *old );
       ~Socket();
