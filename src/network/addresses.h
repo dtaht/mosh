@@ -59,16 +59,25 @@ namespace Network {
       }
 
       if ( sa.sa_family == AF_INET ) {
-        return memcmp( &sin.sin_family, &a2.sin.sin_family, 4 ) < 0;
+        return memcmp( &sin.sin_addr, &a2.sin.sin_addr, 4 ) < 0;
       }
       if ( sa.sa_family == AF_INET6 ) {
-        return memcmp( &sin6.sin6_family, &a2.sin6.sin6_family, 16 ) < 0;
+        return memcmp( &sin6.sin6_addr, &a2.sin6.sin6_addr, 16 ) < 0;
       }
       return memcmp( &ss, &a2.ss, sizeof( ss ) ) < 0;
     }
 
     bool operator==( const Addr &a2 ) const {
-      return sa.sa_family == a2.sa.sa_family && memcmp(&ss, &a2.ss, sizeof( ss )) == 0;
+      if ( sa.sa_family != a2.sa.sa_family ) {
+	return 0;
+      }
+      if ( sa.sa_family == AF_INET ) {
+        return memcmp( &sin.sin_addr, &a2.sin.sin_addr, 4 ) == 0;
+      }
+      if ( sa.sa_family == AF_INET6 ) {
+        return memcmp( &sin6.sin6_addr, &a2.sin6.sin6_addr, 16 ) == 0;
+      }
+      return memcmp( &ss, &a2.ss, sizeof( ss ) ) < 0;
     }
   };
 
