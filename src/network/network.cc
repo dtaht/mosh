@@ -483,6 +483,9 @@ void Connection::refill_socks( std::set< Addr > &addresses )
   for ( std::set< Addr >::const_iterator it = addresses.begin();
 	it != addresses.end();
 	it++ ) {
+    if ( it->sa.sa_family != remote_addr.sa.sa_family ) {
+      continue;
+    }
     try {
       send_socket = new Socket( *it, 0, 0, next_sock_id );
       next_sock_id ++;
