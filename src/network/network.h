@@ -117,6 +117,7 @@ namespace Network {
     {
     private:
       int _fd;
+      void socket_init( int lower_port, int higher_port );
 
     public:
       int MTU;
@@ -130,9 +131,10 @@ namespace Network {
          first.  Same for sending B then A: B is discarded. */
       uint64_t next_seq;
       uint16_t sock_id;
+      Addr local_addr;
 
       int fd( void ) const { return _fd; }
-      Socket( int family, uint16_t id );
+      Socket( Addr addr_to_bind, int lower_port, int higher_port, uint16_t id );
       ~Socket();
 
       Socket( const Socket & other );

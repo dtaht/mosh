@@ -171,8 +171,8 @@ void Connection::prune_sockets( void )
   }
 }
 
-Connection::Socket::Socket( int family, uint16_t id )
-    : _fd( socket( family, SOCK_DGRAM, 0 ) ),
+Connection::Socket::Socket( Addr addr_to_bind, int lower_port, int higher_port, uint16_t id )
+    : _fd( socket( addr_to_bind.sa.sa_family, SOCK_DGRAM, 0 ) ),
     MTU( DEFAULT_SEND_MTU ),
     saved_timestamp( -1 ),
     saved_timestamp_received_at( 0 ),
@@ -180,8 +180,18 @@ Connection::Socket::Socket( int family, uint16_t id )
     SRTT( 1000 ),
     RTTVAR( 500 ),
     next_seq( 0 ),
-    sock_id( id )
+    sock_id( id ),
+    local_addr( addr_to_bind )
 {
+  socket_init( lower_port, higher_port );
+}
+
+void Connection::Socket::socket_init( int lower_port, int higher_port )
+{
+  socklen_t local_addr_len = 0;
+  int family = local_addr.sa.sa_family;
+  int rc;
+
   if ( _fd < 0 ) {
     throw NetworkException( "socket", errno );
   }
@@ -209,6 +219,40 @@ Connection::Socket::Socket( int family, uint16_t id )
     perror( "setsockopt( IP_RECVTOS )" );
   }
 #endif
+
+  /* now, try to bind. */
+  if ( family == AF_INET ) {
+    local_addr_len = sizeof( struct sockaddr_in );
+  } else if ( family == AF_INET6 ) {
+    local_addr_len = sizeof( struct sockaddr_in6 );
+  } else {
+    throw NetworkException( "Unknown address family", 0 );
+  }
+
+  for ( int i = lower_port; i <= higher_port; i++ ) {
+    if ( family == AF_INET ) {
+      local_addr.sin.sin_port = htons( i );
+    } else if ( family == AF_INET6 ) {
+      local_addr.sin6.sin6_port = htons( i );
+    }
+
+    rc = bind( _fd, &local_addr.sa, local_addr_len );
+    if ( rc == 0 ) {
+      return;
+    }
+  }
+  /* error */
+  int saved_errno = errno;
+  close( _fd );
+  char host[ NI_MAXHOST ], serv[ NI_MAXSERV ];
+  int errcode = getnameinfo( &local_addr.sa, local_addr_len,
+			     host, sizeof( host ), serv, sizeof( serv ),
+			     NI_DGRAM | NI_NUMERICHOST | NI_NUMERICSERV );
+  if ( errcode != 0 ) {
+    throw NetworkException( std::string( "bind: getnameinfo: " ) + gai_strerror( errcode ), 0 );
+  }
+  fprintf( stderr, "Failed binding to %s:%s\n", host, serv );
+  throw NetworkException( "bind", saved_errno );
 }
 
 void Connection::setup( void )
@@ -331,41 +375,9 @@ bool Connection::try_bind( const char *addr, int port_low, int port_high )
     search_high = port_high;
   }
 
-  Socket *sock_tmp = new Socket( local_addr.sa.sa_family, next_sock_id++ );
+  Socket *sock_tmp = new Socket( local_addr, search_low, search_high, next_sock_id++ );
   socks.push_back( sock_tmp );
-  for ( int i = search_low; i <= search_high; i++ ) {
-    switch (local_addr.sa.sa_family) {
-    case AF_INET:
-      local_addr.sin.sin_port = htons( i );
-      break;
-    case AF_INET6:
-      local_addr.sin6.sin6_port = htons( i );
-      break;
-    default:
-      throw NetworkException( "Unknown address family", 0 );
-    }
-
-    if ( bind( sock_tmp->fd(), &local_addr.sa, local_addr_len ) == 0 ) {
-      return true;
-    } else if ( i == search_high ) { /* last port to search */
-      int saved_errno = errno;
-      socks.pop_back();
-      delete sock_tmp;
-      char host[ NI_MAXHOST ], serv[ NI_MAXSERV ];
-      int errcode = getnameinfo( &local_addr.sa, local_addr_len,
-				 host, sizeof( host ), serv, sizeof( serv ),
-				 NI_DGRAM | NI_NUMERICHOST | NI_NUMERICSERV );
-      if ( errcode != 0 ) {
-	throw NetworkException( std::string( "bind: getnameinfo: " ) + gai_strerror( errcode ), 0 );
-      }
-      fprintf( stderr, "Failed binding to %s:%s\n",
-	       host, serv );
-      throw NetworkException( "bind", saved_errno );
-    }
-  }
-
-  assert( false );
-  return false;
+  return true;
 }
 
 Connection::Connection( const char *key_str, const char *ip, const char *port ) /* client */
@@ -408,45 +420,24 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
   for ( std::set< Addr >::const_iterator it = addresses.begin();
 	it != addresses.end();
 	it++ ) {
-    try_bind( *it );
+    try {
+      send_socket = new Socket( *it, 0, 0, next_sock_id );
+      next_sock_id ++;
+      socks.push_back( send_socket );
+    } catch ( NetworkException & e ) {
+    }
   }
+
+  log_dbg( LOG_DEBUG_COMMON, "%d sockets successfully bound\n", (int)socks.size() );
 
   if ( !send_socket ) {
     fprintf( stderr, "Failed binding to any local address\n" );
-    /* Try to continue with that we will retry binding later... */
-    send_socket = new Socket( remote_addr.sa.sa_family, next_sock_id++ );
+    /* Try to continue with that; we will retry binding later... */
+    Addr whatever;
+    memset( &whatever.ss, 0, sizeof( whatever.ss ) );
+    whatever.sa.sa_family = AF_UNSPEC;
+    send_socket = new Socket( whatever, 0, 0, next_sock_id++ );
     socks.push_back( send_socket );
-  }
-}
-
-bool Connection::try_bind( const Addr &local_addr )
-{
-  socklen_t local_addr_len = 0;
-  int family = local_addr.sa.sa_family;
-  int rc;
-  if ( family != remote_addr.sa.sa_family ) {
-    return false;
-  }
-
-  if ( family == AF_INET ) {
-    local_addr_len = sizeof( struct sockaddr_in );
-  } else if ( family == AF_INET6 ) {
-    local_addr_len = sizeof( struct sockaddr_in6 );
-  } else {
-    throw NetworkException( "Unknown address family", 0 );
-  }
-
-  Socket *sock_tmp = new Socket( remote_addr.sa.sa_family, next_sock_id++ );
-
-  rc = bind( sock_tmp->fd(), &local_addr.sa, local_addr_len );
-  if ( rc == 0 ) {
-    send_socket = sock_tmp;
-    socks.push_back( sock_tmp );
-    return true;
-  } else {
-    log_dbg( LOG_PERROR, "bind" );
-    delete sock_tmp;
-    return false;
   }
 }
 
