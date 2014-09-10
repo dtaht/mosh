@@ -188,23 +188,26 @@ void Connection::hop_port( void )
 
 void Connection::prune_sockets( void )
 {
-  /* don't keep old sockets if the new socket has been working for long enough */
-  if ( socks.size() > 1 ) {
-    if ( timestamp() - last_port_choice > MAX_OLD_SOCKET_AGE ) {
-      int num_to_kill = socks.size() - 1;
-      for ( int i = 0; i < num_to_kill; i++ ) {
-	socks.pop_front();
-      }
-    }
-  } else {
+  if ( old_socks.size() == 0 ) {
     return;
   }
 
+  /* don't keep old sockets if the new socket has been working for long enough */
+  if ( timestamp() - last_port_choice > MAX_OLD_SOCKET_AGE ) {
+    while ( !old_socks.empty() ) {
+      Socket *tmp = old_socks.front();
+      old_socks.pop_front();
+      delete tmp;
+    }
+  }
+
   /* make sure we don't have too many receive sockets open */
-  if ( socks.size() > MAX_PORTS_OPEN ) {
-    int num_to_kill = socks.size() - MAX_PORTS_OPEN;
+  if ( old_socks.size() > MAX_PORTS_OPEN ) {
+    int num_to_kill = old_socks.size() - MAX_PORTS_OPEN * socks.size();
     for ( int i = 0; i < num_to_kill; i++ ) {
-      socks.pop_front();
+      Socket *tmp = old_socks.front();
+      old_socks.pop_front();
+      delete tmp;
     }
   }
 }

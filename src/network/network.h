@@ -105,7 +105,7 @@ namespace Network {
     static const unsigned int SERVER_ASSOCIATION_TIMEOUT = 40000;
     static const unsigned int PORT_HOP_INTERVAL          = 10000;
 
-    static const unsigned int MAX_PORTS_OPEN             = 10;
+    static const unsigned int MAX_PORTS_OPEN             = 10; /* by active sockets (see prune_sockets()) */
     static const unsigned int MAX_OLD_SOCKET_AGE         = 60000;
 
     static const int CONGESTION_TIMESTAMP_PENALTY = 500; /* ms */
@@ -142,7 +142,7 @@ namespace Network {
       Socket & operator=( const Socket & other );
     };
 
-    std::deque< Socket* > socks; /* TODO think to free memory ! */
+    std::deque< Socket* > socks;
     std::deque< Socket* > old_socks; /* Read-only (post hop-port) */
     uint16_t next_sock_id;
     Socket *send_socket;
