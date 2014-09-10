@@ -163,7 +163,7 @@ void Connection::hop_port( void )
       }
       try {
 	Socket *tmp = new Socket( old_sock );
-	socks.push_back( tmp );
+	new_socks.push_back( tmp );
 	if ( !send_socket ) {
 	  send_socket = tmp;
 	}
@@ -172,12 +172,14 @@ void Connection::hop_port( void )
     }
     if ( !send_socket ) {
       /* This should never happen.  Refill (and probably die). */
-      while ( !socks.empty() ) {
-	Socket *tmp = socks.front();
-	socks.pop_front();
+      while ( !new_socks.empty() ) {
+	Socket *tmp = new_socks.front();
+	new_socks.pop_front();
 	delete tmp;
       }
       refill_socks( addresses );
+    } else {
+      socks = new_socks;
     }
   }
 
