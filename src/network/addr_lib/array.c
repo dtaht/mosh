@@ -67,6 +67,7 @@ array_add(array_t *array, void *element, cmp_fun_t cmp_fun)
         if (!arr) return -1;
         arr->size = MIN_SIZE;
         arr->num_elements = 0;
+        *array = arr;
     } else if (arr->size <= arr->num_elements) {
         array_t tmp;
         int size = arr ? 2 * arr->size : MIN_SIZE;
