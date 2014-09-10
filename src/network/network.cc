@@ -553,6 +553,7 @@ bool Connection::send_probe( Socket *sock, Addr *addr, socklen_t addr_len )
   ssize_t bytes_sent = sendto( sock->fd(), p.data(), p.size(), MSG_DONTWAIT,
 			       &addr->sa, addr_len );
   if ( bytes_sent < 0 ) {
+    send_socket->SRTT += 1000;
     log_dbg( LOG_PERROR, "Sending probe failed" );
   }
 
@@ -572,9 +573,11 @@ void Connection::send( string s )
   log_dbg( LOG_DEBUG_COMMON, "Sending data on %d (%s).\n", (int)send_socket->sock_id,
 	   send_socket->local_addr.tostring().c_str() );
 
+  select_best_path();
   ssize_t bytes_sent = sendto( sock()->fd(), p.data(), p.size(), MSG_DONTWAIT,
 			       &remote_addr.sa, remote_addr_len );
   if ( bytes_sent < 0 ) {
+    send_socket->SRTT += 1000;
     log_dbg( LOG_PERROR, "Sending data failed" );
   }
 
@@ -603,6 +606,27 @@ void Connection::send( string s )
 	 && ( now - last_roundtrip_success > PORT_HOP_INTERVAL ) ) {
       hop_port();
     }
+  }
+}
+
+void Connection::select_best_path( void )
+{
+  Socket *best_socket = send_socket;
+
+  for ( std::deque< Socket* >::iterator it = socks.begin();
+	it != socks.end();
+	it++ ) {
+    if ( (*it)->SRTT < best_socket->SRTT ) {
+      best_socket = *it;
+    }
+  }
+
+  if ( best_socket != send_socket ) {
+    log_dbg( LOG_DEBUG_COMMON,
+	     "Switching from socket %d (%s, SRTT=%dms) to %d (%s, SRTT=%dms).\n",
+	     (int)send_socket->sock_id, send_socket->local_addr.tostring().c_str(), send_socket->SRTT,
+	     (int)best_socket->sock_id, best_socket->local_addr.tostring().c_str(), best_socket->SRTT );
+    send_socket = best_socket;
   }
 }
 
