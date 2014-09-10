@@ -752,7 +752,8 @@ string Connection::recv_one( Socket *sock, bool nonblocking )
 	}
       }
       if ( p.is_probe() ) {
-	fprintf( pok, "Probe received on sock %d, RTT=%u, SRTT=%u\n", (int) sock->sock_id, (unsigned int)R, (unsigned int)sock->SRTT );
+	log_dbg( LOG_DEBUG_COMMON, "Probe received on sock %d (%s), RTT=%u, SRTT=%u\n",
+		 (int) sock->sock_id, sock->local_addr.tostring().c_str(), (unsigned int)R, (unsigned int)sock->SRTT );
       }
     }
 

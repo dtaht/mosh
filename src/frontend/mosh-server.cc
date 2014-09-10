@@ -88,8 +88,6 @@
 
 #include "networktransport.cc"
 
-FILE *pok = fopen("/tmp/y", "a");
-
 typedef Network::Transport< Terminal::Complete, Network::UserStream > ServerConnection;
 
 void serve( int host_fd,

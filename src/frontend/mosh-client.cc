@@ -42,7 +42,6 @@
 #include "fatal_assert.h"
 
 #include <stdio.h>
-FILE *pok = fopen("/tmp/x", "a");
 
 /* These need to be included last because of conflicting defines. */
 /*
