@@ -500,9 +500,17 @@ void Connection::refill_socks( std::set< Addr > &addresses )
     fprintf( stderr, "Failed binding to any local address\n" );
     /* Try to continue with that; we will retry binding later... */
     Addr whatever;
+    int family[2] = { AF_INET, AF_INET6 };
     memset( &whatever.ss, 0, sizeof( whatever.ss ) );
-    whatever.sa.sa_family = AF_UNSPEC;
-    send_socket = new Socket( whatever, 0, 0, next_sock_id++ );
+    for ( int i = 0; i < 2; i ++ ) {
+      whatever.sa.sa_family = family[i];
+      try {
+	send_socket = new Socket( whatever, 0, 0, next_sock_id++ );
+	break;
+      }  catch ( NetworkException & e ) {
+	log_dbg( LOG_DEBUG_COMMON, "Failed to bind whatever on IPv%c\n", whatever.sa.sa_family == AF_INET ? '4' : '6' );
+      }
+    }
     socks.push_back( send_socket );
   }
 }
