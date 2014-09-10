@@ -517,7 +517,10 @@ void Connection::refill_socks( std::set< Addr > &addresses )
 
 void Connection::send_probes( void )
 {
-  bool has_fail;
+  bool has_fail = 0;
+  if ( server ) {
+    return;
+  }
   for ( std::deque< Socket* >::iterator it = socks.begin();
 	it != socks.end();
 	it++ ) {
