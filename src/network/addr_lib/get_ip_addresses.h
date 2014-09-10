@@ -44,7 +44,7 @@ struct kernel_address {
 int addr_cmp(const struct kernel_address *a1, const struct kernel_address *a2);
 void addr_add(array_t *addresses, struct kernel_address *addr);
 void addr_del(array_t addresses, struct kernel_address *addr);
-void print_address(const struct kernel_address *kaddr);
+int print_address(char *dst, const struct kernel_address *kaddr);
 array_t get_kernel_addresses(void);
 #endif /* GET_IP_ADDRESSES_H */
 

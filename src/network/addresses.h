@@ -37,6 +37,9 @@
 #include <netinet/in.h>
 #include <string.h>
 #include <set>
+#include <string>
+
+using namespace std;
 
 namespace Network {
 
@@ -79,6 +82,8 @@ namespace Network {
       }
       return memcmp( &ss, &a2.ss, sizeof( ss ) ) < 0;
     }
+
+    string tostring( void ) const;
   };
 
   class Addresses {

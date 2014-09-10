@@ -65,9 +65,8 @@ addr_del(array_t addresses, struct kernel_address *addr)
         free(copy);
 }
 
-void print_address(const struct kernel_address *kaddr)
+int print_address(char *dst, const struct kernel_address *kaddr)
 {
-    char addrname[INET6_ADDRSTRLEN];
     int family = kaddr->sa.sa_family;
     const char *tmp;
     void *addr;
@@ -77,14 +76,10 @@ void print_address(const struct kernel_address *kaddr)
         addr = (void*) &kaddr->sin6.sin6_addr;
     } else {
         printf("unknown address family: %d\n", family);
-        return;
+        return -1;
     }
-    tmp = inet_ntop(family, addr, addrname, INET6_ADDRSTRLEN);
-    if (!tmp)
-        perror("can't print addr");
-    else
-        printf("%s%s\n", tmp,
-               kaddr->flags & ADDR_LOCAL ? " (local)" : "");
+    tmp = inet_ntop(family, addr, dst, INET6_ADDRSTRLEN);
+    return tmp ? 0 : -1;
 }
 
 #ifdef LINUX

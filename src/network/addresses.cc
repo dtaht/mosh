@@ -62,7 +62,24 @@ std::set< Addr > Addresses::get_host_addresses( int *has_change )
   return result;
 }
 
+string Addr::tostring( void ) const {
+  string result;
+  char dst[INET6_ADDRSTRLEN];
+  int family = sa.sa_family;
+  const char *tmp;
+  void *addr;
+  if (family == AF_INET) {
+    addr = (void*) &sin.sin_addr;
+  } else if (family == AF_INET6) {
+    addr = (void*) &sin6.sin6_addr;
+  } else {
+    return string("");
+  }
+  tmp = inet_ntop(family, addr, dst, INET6_ADDRSTRLEN);
+  return string( tmp );
+}
+
 int Addresses::get_fd( void )
 {
-    return -1;
+  return -1;
 }
