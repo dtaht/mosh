@@ -151,8 +151,10 @@ void Connection::hop_port( void )
     }
     send_socket = NULL;
     refill_socks( addresses );
+
   } else {
     std::deque< Socket * > new_socks;
+
     while ( !socks.empty() ) {
       Socket *old_sock = socks.front();
       socks.pop_front();
@@ -170,6 +172,7 @@ void Connection::hop_port( void )
       } catch ( NetworkException & e ) {
       }
     }
+
     if ( !send_socket ) {
       /* This should never happen.  Refill (and probably die). */
       while ( !new_socks.empty() ) {
@@ -212,7 +215,7 @@ void Connection::prune_sockets( void )
   }
 }
 
-Connection::Socket::Socket( Socket *old )
+Connection::Socket::Socket( Socket *old ) /* For port hoping, client only. */
     : _fd( socket( old->local_addr.sa.sa_family, SOCK_DGRAM, 0 ) ),
     MTU( old->MTU ),
     saved_timestamp( -1 ),
