@@ -575,6 +575,7 @@ void Connection::send( string s )
 
   std::sort( socks.begin(), socks.end(), Socket::srtt_order );
   ssize_t bytes_sent = -1;
+  log_dbg( LOG_DEBUG_COMMON, "Sending data" );
   for ( std::deque< Socket* >::const_iterator it = socks.begin();
 	it != socks.end();
 	it++ ) {
@@ -586,12 +587,12 @@ void Connection::send( string s )
     } else {
       if ( send_socket != sock ) {
 	log_dbg( LOG_DEBUG_COMMON,
-		 "Switching from socket %d (%s, SRTT=%dms) to %d (%s, SRTT=%dms).\n",
+		 ": done by switching from socket %d (%s, SRTT=%dms) to %d (%s, SRTT=%dms).\n",
 		 (int)send_socket->sock_id, send_socket->local_addr.tostring().c_str(), (int)send_socket->SRTT,
 		 (int)sock->sock_id, sock->local_addr.tostring().c_str(), (int)sock->SRTT );
 	send_socket = sock;
       } else {
-	log_dbg( LOG_DEBUG_COMMON, "Data sent on %d (%s).\n",
+	log_dbg( LOG_DEBUG_COMMON, ": done on %d (%s).\n",
 		 (int)send_socket->sock_id, send_socket->local_addr.tostring().c_str() );
       }
       break;
@@ -599,9 +600,9 @@ void Connection::send( string s )
   }
 
   if ( bytes_sent == static_cast<ssize_t>( p.size() ) ) {
-    log_dbg( LOG_PERROR, "Sending data failed." );
     have_send_exception = false;
   } else {
+    log_dbg( LOG_PERROR, " failed" );
     /* Notify the frontend on sendto() failure, but don't alter control flow.
        sendto() success is not very meaningful because packets can be lost in
        flight anyway. */
