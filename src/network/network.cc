@@ -143,7 +143,7 @@ void Connection::hop_port( void )
   assert( !server );
 
   setup();
-  assert( remote_addr_len != 0 );
+  assert( has_remote_addr() );
 
   int has_change = 0;
   std::set< Addr > addresses = host_addresses.get_host_addresses( &has_change );
@@ -230,12 +230,13 @@ Connection::Socket::Socket( Socket *old ) /* For port hoping, client only. */
     RTTVAR( old->RTTVAR ),
     next_seq( old->next_seq ),
     sock_id( old->sock_id ),
-    local_addr( old->local_addr )
+    local_addr( old->local_addr ),
+    remote_addr( old->local_addr )
 {
   socket_init( 0, 0 );
 }
 
-Connection::Socket::Socket( Addr addr_to_bind, int lower_port, int higher_port, uint16_t id )
+Connection::Socket::Socket( Addr addr_to_bind, int lower_port, int higher_port, Addr remote_addr, uint16_t id )
     : _fd( socket( addr_to_bind.sa.sa_family, SOCK_DGRAM, 0 ) ),
     MTU( DEFAULT_SEND_MTU ),
     saved_timestamp( -1 ),
@@ -245,7 +246,8 @@ Connection::Socket::Socket( Addr addr_to_bind, int lower_port, int higher_port, 
     RTTVAR( 500 ),
     next_seq( 0 ),
     sock_id( id ),
-    local_addr( addr_to_bind )
+    local_addr( addr_to_bind ),
+    remote_addr( remote_addr )
 {
   socket_init( lower_port, higher_port );
 }
@@ -359,7 +361,6 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
     next_sock_id( 0 ),
     send_socket( NULL ),
     remote_addr(),
-    remote_addr_len( 0 ),
     host_addresses(),
     server( true ),
     key(),
@@ -439,7 +440,7 @@ bool Connection::try_bind( const char *addr, int port_low, int port_high )
     search_high = port_high;
   }
 
-  Socket *sock_tmp = new Socket( local_addr, search_low, search_high, next_sock_id++ );
+  Socket *sock_tmp = new Socket( local_addr, search_low, search_high, Addr(), next_sock_id++ );
   socks.push_back( sock_tmp );
   return true;
 }
@@ -449,7 +450,6 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
     next_sock_id( 0 ),
     send_socket( NULL ),
     remote_addr(),
-    remote_addr_len( 0 ),
     host_addresses(),
     server( false ),
     key( key_str ),
@@ -476,9 +476,10 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
   hints.ai_socktype = SOCK_DGRAM;
   hints.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV;
   AddrInfo ai( ip, port, &hints );
-  fatal_assert( ai.res->ai_addrlen <= sizeof( remote_addr ) );
-  remote_addr_len = ai.res->ai_addrlen;
-  memcpy( &remote_addr.sa, ai.res->ai_addr, remote_addr_len );
+  fatal_assert( ai.res->ai_addrlen <= sizeof( struct sockaddr_storage ) );
+  for ( struct addrinfo *it = ai.res; it != NULL; it = it->ai_next ) {
+    remote_addr.push_back( Addr( *it->ai_addr, it->ai_addrlen ) );
+  }
 
   std::set< Addr > addresses = host_addresses.get_host_addresses( NULL );
   refill_socks( addresses );
@@ -488,39 +489,45 @@ void Connection::refill_socks( std::set< Addr > &addresses )
 {
   assert( !send_socket && socks.empty() );
 
-  for ( std::set< Addr >::const_iterator it = addresses.begin();
-	it != addresses.end();
-	it++ ) {
-    if ( it->sa.sa_family != remote_addr.sa.sa_family ) {
-      continue;
-    }
-    try {
-      send_socket = new Socket( *it, 0, 0, next_sock_id );
-      next_sock_id ++;
-      socks.push_back( send_socket );
-    } catch ( NetworkException & e ) {
-      log_dbg( LOG_DEBUG_COMMON, "Failed to bind at %s (%s)\n", it->tostring().c_str(), strerror( e.the_errno ) );
-    }
-  }
+  for ( std::vector< Addr >::const_iterator ra_it = remote_addr.begin();
+	ra_it != remote_addr.end();
+	ra_it++) {
 
-  log_dbg( LOG_DEBUG_COMMON, "%d sockets successfully bound\n", (int)socks.size() );
-
-  if ( !send_socket ) {
-    fprintf( stderr, "Failed binding to any local address\n" );
-    /* Try to continue with that; we will retry binding later... */
-    Addr whatever;
-    int family[2] = { AF_INET, AF_INET6 };
-    memset( &whatever.ss, 0, sizeof( whatever.ss ) );
-    for ( int i = 0; i < 2; i ++ ) {
-      whatever.sa.sa_family = family[i];
+    for ( std::set< Addr >::const_iterator la_it = addresses.begin();
+	  la_it != addresses.end();
+	  la_it++ ) {
+      if ( la_it->sa.sa_family != ra_it->sa.sa_family ) {
+	continue;
+      }
       try {
-	send_socket = new Socket( whatever, 0, 0, next_sock_id++ );
-	break;
-      }  catch ( NetworkException & e ) {
-	log_dbg( LOG_DEBUG_COMMON, "Failed to bind whatever on IPv%c\n", whatever.sa.sa_family == AF_INET ? '4' : '6' );
+	send_socket = new Socket( *la_it, 0, 0, *ra_it, next_sock_id );
+	next_sock_id ++;
+	socks.push_back( send_socket );
+      } catch ( NetworkException & e ) {
+	log_dbg( LOG_DEBUG_COMMON, "Failed to bind at %s (%s)\n", la_it->tostring().c_str(), strerror( e.the_errno ) );
       }
     }
-    socks.push_back( send_socket );
+
+    log_dbg( LOG_DEBUG_COMMON, "%d sockets successfully bound\n", (int)socks.size() );
+
+    if ( !send_socket ) {
+      fprintf( stderr, "Failed binding to any local address\n" );
+      /* Try to continue with that; we will retry binding later... */
+      Addr whatever;
+      int family[2] = { AF_INET, AF_INET6 };
+      memset( &whatever.ss, 0, sizeof( whatever.ss ) );
+      for ( int i = 0; i < 2; i ++ ) {
+	whatever.sa.sa_family = family[i];
+	try {
+	  send_socket = new Socket( whatever, 0, 0, *ra_it, next_sock_id++ );
+	  break;
+	}  catch ( NetworkException & e ) {
+	  log_dbg( LOG_DEBUG_COMMON, "Failed to bind whatever on IPv%c\n",
+		   whatever.sa.sa_family == AF_INET ? '4' : '6' );
+	}
+      }
+      socks.push_back( send_socket );
+    }
   }
 }
 
@@ -534,7 +541,7 @@ void Connection::send_probes( void )
 	it != socks.end();
 	it++ ) {
     if ( *it != send_socket ) {
-      bool rc = send_probe( *it, &remote_addr, remote_addr_len );
+      bool rc = send_probe( *it, (*it)->remote_addr );
       has_fail = has_fail || rc;
     }
   }
@@ -544,7 +551,7 @@ void Connection::send_probes( void )
   }
 }
 
-bool Connection::send_probe( Socket *sock, Addr *addr, socklen_t addr_len )
+bool Connection::send_probe( Socket *sock, Addr &addr )
 {
   string empty("");
   Packet px = new_packet( sock, PROBE_FLAG, empty );
@@ -554,7 +561,7 @@ bool Connection::send_probe( Socket *sock, Addr *addr, socklen_t addr_len )
   log_dbg( LOG_DEBUG_COMMON, "Sending probe on %d (%s).\n", (int)sock->sock_id,
 	   sock->local_addr.tostring().c_str() );
   ssize_t bytes_sent = sendto( sock->fd(), p.data(), p.size(), MSG_DONTWAIT,
-			       &addr->sa, addr_len );
+			       &addr.sa, addr.addrlen );
   if ( bytes_sent < 0 ) {
     send_socket->SRTT += 1000;
     log_dbg( LOG_PERROR, "Sending probe failed" );
@@ -581,7 +588,7 @@ void Connection::send( string s )
 	it++ ) {
     Socket *sock = *it;
     bytes_sent = sendto( sock->fd(), p.data(), p.size(), MSG_DONTWAIT,
-			 &remote_addr.sa, remote_addr_len );
+			 &sock->remote_addr.sa, sock->remote_addr.addrlen );
     if ( bytes_sent < 0 ) {
       sock->SRTT += 1000;
     } else {
@@ -669,7 +676,8 @@ string Connection::recv_one( Socket *sock, bool nonblocking )
 
   /* receive source address */
   header.msg_name = &packet_remote_addr.sa;
-  header.msg_namelen = sizeof( packet_remote_addr );
+  header.msg_namelen = packet_remote_addr.addrlen;
+  assert( packet_remote_addr.addrlen == sizeof( packet_remote_addr.ss ) );
 
   /* receive payload */
   msg_iovec.iov_base = msg_payload;
@@ -685,6 +693,7 @@ string Connection::recv_one( Socket *sock, bool nonblocking )
   header.msg_flags = 0;
 
   ssize_t received_len = recvmsg( sock_to_recv, &header, nonblocking ? MSG_DONTWAIT : 0 );
+  packet_remote_addr.addrlen = header.msg_namelen;
 
   if ( received_len < 0 ) {
     throw NetworkException( "recvmsg", errno );
@@ -759,7 +768,7 @@ string Connection::recv_one( Socket *sock, bool nonblocking )
     last_heard = timestamp();
     if ( p.is_probe() ) {
       if ( server ) {
-	send_probe( sock, &packet_remote_addr, remote_addr_len );
+	send_probe( sock, packet_remote_addr );
       }
       if ( ! p.payload.empty() ) {
 	fprintf(stderr, "Strange: probe with payload received.\n");
@@ -769,12 +778,10 @@ string Connection::recv_one( Socket *sock, bool nonblocking )
 
     if ( server ) { /* only client can roam */
       send_socket = sock;
-      if ( remote_addr_len != header.msg_namelen ||
-	   memcmp( &remote_addr, &packet_remote_addr, remote_addr_len ) != 0 ) {
-	remote_addr = packet_remote_addr;
-	remote_addr_len = header.msg_namelen;
+      if ( send_socket->remote_addr != packet_remote_addr ) {
+	send_socket->remote_addr = packet_remote_addr;
 	char host[ NI_MAXHOST ], serv[ NI_MAXSERV ];
-	int errcode = getnameinfo( &remote_addr.sa, remote_addr_len,
+	int errcode = getnameinfo( &send_socket->remote_addr.sa, send_socket->remote_addr.addrlen,
 				   host, sizeof( host ), serv, sizeof( serv ),
 				   NI_DGRAM | NI_NUMERICHOST | NI_NUMERICSERV );
 	if ( errcode != 0 ) {

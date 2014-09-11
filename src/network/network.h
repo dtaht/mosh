@@ -132,11 +132,12 @@ namespace Network {
       uint64_t next_seq;
       uint16_t sock_id;
       Addr local_addr;
+      Addr remote_addr;
 
       int fd( void ) const { return _fd; }
       static bool srtt_order( Socket *s1, Socket *s2 ) { return s1->SRTT < s2->SRTT; }
       static bool addr_order( Socket *s1, Socket *s2 ) { return s1->local_addr < s2->local_addr; }
-      Socket( Addr addr_to_bind, int lower_port, int higher_port, uint16_t id );
+      Socket( Addr addr_to_bind, int lower_port, int higher_port, Addr remote_addr, uint16_t id );
       Socket( Socket *old );
       ~Socket();
 
@@ -149,8 +150,7 @@ namespace Network {
     uint16_t next_sock_id;
     Socket *send_socket;
     bool has_remote_addr( void ) const { return send_socket != NULL; };
-    Addr remote_addr;
-    socklen_t remote_addr_len;
+    std::vector< Addr > remote_addr;
     Addresses host_addresses;
 
     bool server;
@@ -181,7 +181,7 @@ namespace Network {
     void refill_socks( std::set< Addr > &addresses );
     void prune_sockets( void );
 
-    bool send_probe( Socket *sock, Addr *addr, socklen_t addr_len );
+    bool send_probe( Socket *sock, Addr &addr );
     string recv_one( Socket *sock_to_recv, bool nonblocking );
 
   public:
@@ -202,8 +202,8 @@ namespace Network {
     uint64_t timeout( void ) const;
     double get_SRTT( void ) const { return send_socket ? send_socket->SRTT : socks.back()->SRTT; }
 
-    const Addr &get_remote_addr( void ) const { return remote_addr; }
-    socklen_t get_remote_addr_len( void ) const { return remote_addr_len; }
+    const Addr &get_remote_addr( void ) const { return ( send_socket ? send_socket : socks.back() )->remote_addr; }
+    socklen_t get_remote_addr_len( void ) const { return send_socket ? send_socket->remote_addr.addrlen : 0; }
 
     const NetworkException *get_send_exception( void ) const
     {
