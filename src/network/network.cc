@@ -494,6 +494,10 @@ void Connection::refill_socks( std::set< Addr > &addresses )
 	ra_it != remote_addr.end();
 	ra_it++) {
 
+    log_dbg( LOG_DEBUG_COMMON,
+	     "Trying to bind for the remote address: %s.\n",
+	     ra_it->tostring().c_str() );
+
     for ( std::set< Addr >::const_iterator la_it = addresses.begin();
 	  la_it != addresses.end();
 	  la_it++ ) {
