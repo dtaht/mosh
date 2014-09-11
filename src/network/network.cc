@@ -73,7 +73,8 @@ const uint64_t SEQUENCE_MASK  = 0x0000FFFFFFFFFFFF;
 #define TO_SOCKID(id) (uint64_t( id ) << 48)
 #define GET_DIRECTION(nonce) ( ((nonce) & DIRECTION_MASK) ? TO_CLIENT : TO_SERVER )
 #define GET_SOCKID(nonce) ( uint16_t( ( (nonce) & SOCKID_MASK ) >> 48 ) )
-const uint16_t PROBE_FLAG = 1;
+const uint16_t PROBE_FLAG = 1 << 0;
+const uint16_t ADDR_FLAG = 1 << 1;
 
 /* Read in packet from coded string */
 Packet::Packet( string coded_packet, Session *session )
@@ -554,6 +555,51 @@ void Connection::send_probes( void )
   if ( has_fail ) {
     /* Mt: recheck interfaces. */
   }
+}
+
+void Connection::send_addresses( void )
+{
+  assert( server );
+  string payload;
+  std::set< Addr > addresses = host_addresses.get_host_addresses( NULL );
+  for ( std::set< Addr >::const_iterator la_it = addresses.begin();
+	la_it != addresses.end();
+	la_it++ ) {
+    if ( la_it->addrlen > 255 ) {
+      continue;
+    }
+    uint8_t addrlen = la_it->addrlen;
+    payload += string( (char *) &addrlen, 1 ) + string( (char *) &la_it->sa, addrlen );
+  }
+  send( ADDR_FLAG, payload );
+}
+
+void Connection::parse_received_addresses( string payload )
+{
+  int size = payload.size();
+  const char *data = payload.data();
+  std::vector< Addr > addr;
+  while( size > 0 ) {
+    int addrlen = (int)data[0];
+    if ( 1 + addrlen < size ) {
+      log_dbg( LOG_DEBUG_COMMON, "Truncated message received.\n" );
+      break;
+    }
+    addr.push_back( Addr( *(struct sockaddr *) (data + 1), addrlen ) );
+    data += 1 + addrlen;
+    size -= 1 + addrlen;
+  }
+  assert( size == 0 );
+
+  /* don't retain addresses already registered in remote_addr */
+  received_remote_addr.resize( addr.size() );
+  std::sort( addr.begin(), addr.end() );
+  std::sort( remote_addr.begin(), remote_addr.end() );
+  std::vector< Addr >::const_iterator it;
+  it = std::set_difference( addr.begin(), addr.end(),
+			    remote_addr.begin(), remote_addr.end(),
+			    received_remote_addr.begin() );
+  received_remote_addr.resize( it - received_remote_addr.begin() );
 }
 
 bool Connection::send_probe( Socket *sock, Addr &addr )

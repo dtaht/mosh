@@ -151,6 +151,7 @@ namespace Network {
     Socket *send_socket;
     bool has_remote_addr( void ) const { return send_socket != NULL; };
     std::vector< Addr > remote_addr;
+    std::vector< Addr > received_remote_addr;
     Addresses host_addresses;
 
     bool server;
@@ -181,6 +182,8 @@ namespace Network {
     void refill_socks( std::set< Addr > &addresses );
     void prune_sockets( void );
 
+    void send_addresses( void );
+    void parse_received_addresses( string payload );
     bool send_probe( Socket *sock, Addr &addr );
     string recv_one( Socket *sock_to_recv, bool nonblocking );
 
