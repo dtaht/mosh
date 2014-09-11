@@ -43,44 +43,51 @@ using namespace std;
 
 namespace Network {
 
-  union Addr {
+  struct Addr {
   public:
-    struct sockaddr sa;
-    struct sockaddr_in sin;
-    struct sockaddr_in6 sin6;
-    struct sockaddr_storage ss;
+    int addrlen;
+    union {
+      struct sockaddr sa;
+      struct sockaddr_in sin;
+      struct sockaddr_in6 sin6;
+      struct sockaddr_storage ss;
+    };
 
-    Addr() : sa() {}
-    Addr( struct sockaddr &s ) : sa( s ) {}
-    Addr( struct sockaddr_in &s ) : sin( s ) {}
-    Addr( struct sockaddr_in6 &s ) : sin6( s ) {}
-    Addr( struct sockaddr_storage &s ) : ss( s ) {}
+    Addr() : addrlen( sizeof( ss ) ), ss() {}
+    Addr( struct sockaddr &s ) {
+      switch ( sa.sa_family ) {
+      case AF_UNSPEC: addrlen = 0;              break;
+      case AF_INET:   addrlen = sizeof( sin );  break;
+      case AF_INET6:  addrlen = sizeof( sin6 ); break;
+      default:        addrlen = sizeof( ss );   break;
+      }
+      memcpy( &ss, &s, addrlen );
+    }
+    Addr( struct sockaddr &s, socklen_t len ) : addrlen( (int)len ) { memcpy( &ss, &s, len ); }
+    Addr( struct sockaddr_in &s ) : addrlen( sizeof( struct sockaddr_in ) ), sin( s ) {}
+    Addr( struct sockaddr_in6 &s ) : addrlen( sizeof( struct sockaddr_in6 ) ), sin6( s ) {}
+    Addr( struct sockaddr_storage &s ) : addrlen( sizeof( struct sockaddr_storage ) ), ss( s ) {}
 
     bool operator<( const Addr &a2 ) const {
       if ( sa.sa_family != a2.sa.sa_family ) {
-        return sa.sa_family < a2.sa.sa_family;
+	return sa.sa_family < a2.sa.sa_family;
       }
 
       if ( sa.sa_family == AF_INET ) {
-        return memcmp( &sin.sin_addr, &a2.sin.sin_addr, 4 ) < 0;
+	return memcmp( &sin.sin_addr, &a2.sin.sin_addr, 4 ) < 0;
       }
       if ( sa.sa_family == AF_INET6 ) {
-        return memcmp( &sin6.sin6_addr, &a2.sin6.sin6_addr, 16 ) < 0;
+	return memcmp( &sin6.sin6_addr, &a2.sin6.sin6_addr, 16 ) < 0;
       }
       return memcmp( &ss, &a2.ss, sizeof( ss ) ) < 0;
     }
 
     bool operator==( const Addr &a2 ) const {
-      if ( sa.sa_family != a2.sa.sa_family ) {
-	return 0;
-      }
-      if ( sa.sa_family == AF_INET ) {
-        return memcmp( &sin.sin_addr, &a2.sin.sin_addr, 4 ) == 0;
-      }
-      if ( sa.sa_family == AF_INET6 ) {
-        return memcmp( &sin6.sin6_addr, &a2.sin6.sin6_addr, 16 ) == 0;
-      }
-      return memcmp( &ss, &a2.ss, sizeof( ss ) ) < 0;
+      return addrlen == a2.addrlen && memcmp( &ss, &a2.ss, addrlen ) == 0;
+    }
+
+    bool operator!=( const Addr &a2 ) const {
+      return ! ( *this == a2 );
     }
 
     string tostring( void ) const;
