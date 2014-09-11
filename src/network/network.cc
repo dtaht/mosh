@@ -575,13 +575,13 @@ bool Connection::send_probe( Socket *sock, Addr &addr )
   return ( bytes_sent != static_cast<ssize_t>( p.size() ) );
 }
 
-void Connection::send( string s )
+void Connection::send( uint16_t flags, string s )
 {
   if ( !has_remote_addr() ) {
     return;
   }
 
-  Packet px = new_packet( send_socket, 0, s );
+  Packet px = new_packet( send_socket, flags, s );
 
   string p = px.tostring( &session );
 

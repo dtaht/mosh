@@ -327,7 +327,7 @@ void TransportSender<MyState>::send_in_fragments( string diff, uint64_t new_num 
   for ( vector<Fragment>::iterator i = fragments.begin();
         i != fragments.end();
         i++ ) {
-    connection->send( i->tostring() );
+    connection->send( 0, i->tostring() );
 
     if ( verbose ) {
       fprintf( stderr, "[%u] Sent [%d=>%d] id %d, frag %d ack=%d, throwaway=%d, len=%d, frame rate=%.2f, timeout=%d, srtt=%.1f\n",

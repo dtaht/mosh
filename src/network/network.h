@@ -189,7 +189,7 @@ namespace Network {
     Connection( const char *key_str, const char *ip, const char *port ); /* client */
     ~Connection();
 
-    void send( string s );
+    void send( uint16_t flags, string s );
     void send_probes( void );
     string recv( void );
     const std::vector< int > fds( void ) const;
