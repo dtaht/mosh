@@ -23,8 +23,6 @@ THE SOFTWARE.
 #ifndef GET_IP_ADDRESSES_H
 #define GET_IP_ADDRESSES_H
 
-// #define LINUX
-
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include "array.h"

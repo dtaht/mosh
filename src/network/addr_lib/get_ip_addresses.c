@@ -82,7 +82,7 @@ int print_address(char *dst, const struct kernel_address *kaddr)
     return tmp ? 0 : -1;
 }
 
-#ifdef LINUX
+#ifdef __linux
 #include "get_ip_addresses_netlink.c"
 #else
 #include "get_ip_addresses_bsd.c"
