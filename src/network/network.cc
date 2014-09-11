@@ -107,6 +107,7 @@ bool Packet::is_probe( void )
 /* Output coded string from packet */
 string Packet::tostring( Session *session )
 {
+  assert( seq < SEQUENCE_MASK ); /* when this will happen, we'll be dead, brother. */
   uint64_t direction_id_seq = TO_DIRECTION( direction ) | TO_SOCKID( sock_id ) | (seq & SEQUENCE_MASK);
 
   uint16_t ts_net[ 2 ] = { static_cast<uint16_t>( htobe16( timestamp ) ),
