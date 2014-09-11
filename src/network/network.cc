@@ -47,6 +47,7 @@ extern "C" {
 #include <unistd.h>
 #include <net/if.h>
 #include <sys/ioctl.h>
+#include <algorithm>
 
 
 #include "dos_assert.h"
