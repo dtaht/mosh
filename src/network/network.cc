@@ -321,6 +321,8 @@ void Connection::Socket::socket_init( int lower_port, int higher_port )
 
     rc = bind( _fd, &local_addr.sa, local_addr_len );
     if ( rc == 0 ) {
+      log_dbg( LOG_DEBUG_COMMON, "New Socket %d bound to %s for %s.\n", sock_id,
+	       local_addr.tostring().c_str(), remote_addr.tostring().c_str() );
       return;
     }
   }
