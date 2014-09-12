@@ -624,11 +624,11 @@ void Connection::send_addresses( void )
 void Connection::parse_received_addresses( string payload )
 {
   int size = payload.size();
-  const char *data = payload.data();
+  const unsigned char *data = (const unsigned char*) payload.data();
   std::vector< Addr > addr;
   while( size > 0 ) {
     int addrlen = (int)data[0];
-    if ( 1 + addrlen < size ) {
+    if ( size < 1 + addrlen ) {
       log_dbg( LOG_DEBUG_COMMON, "Truncated message received.\n" );
       break;
     }
