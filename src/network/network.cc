@@ -365,6 +365,7 @@ private:
 
 Connection::Connection( const char *desired_ip, const char *desired_port ) /* server */
   : socks(),
+    old_socks(),
     next_sock_id( 0 ),
     send_socket( NULL ),
     remote_addr(),
@@ -454,6 +455,7 @@ bool Connection::try_bind( const char *addr, int port_low, int port_high )
 
 Connection::Connection( const char *key_str, const char *ip, const char *port ) /* client */
   : socks(),
+    old_socks(),
     next_sock_id( 0 ),
     send_socket( NULL ),
     remote_addr(),
