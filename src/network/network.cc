@@ -275,6 +275,11 @@ void Connection::Socket::socket_init( int lower_port, int higher_port )
   int family = local_addr.sa.sa_family;
   int rc;
 
+  if ( sock_id >= 0x7FFF ) {
+    fprintf( stderr, "Sockets exhausted, exiting for security reasons.\n" );
+    throw;
+  }
+
   if ( _fd < 0 ) {
     throw NetworkException( "socket", errno );
   }
