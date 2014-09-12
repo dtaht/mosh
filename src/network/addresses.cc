@@ -49,6 +49,9 @@ std::set< Addr > Addresses::get_host_addresses( int *has_change )
   init_iterator( &iter );
   while ( NULL != (kaddr = (struct kernel_address *)get_next( kaddrs, &iter )) ) {
     Addr tmp = Addr( kaddr->ss );
+    if ( tmp.is_loopback() ) {
+      continue;
+    }
     log_dbg( LOG_DEBUG_COMMON, "Host address read: %s.\n", tmp.tostring().c_str() );
     result.insert( tmp );
   }

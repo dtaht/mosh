@@ -91,6 +91,11 @@ namespace Network {
     }
 
     string tostring( void ) const;
+
+    bool is_loopback( void ) const {
+      return ( sa.sa_family == AF_INET && IN_LOOPBACK( sin.sin_addr.s_addr ) ) ||
+	( sa.sa_family == AF_INET6 && IN6_IS_ADDR_LOOPBACK( &sin6.sin6_addr ) );
+    }
   };
 
   class Addresses {
