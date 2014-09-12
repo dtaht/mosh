@@ -607,8 +607,16 @@ void Connection::send_addresses( void )
     if ( la_it->addrlen > 255 ) {
       continue;
     }
+    Addr tmp = *la_it; /* because la_it is "const"... using a vector instead ? */
+    log_dbg( LOG_DEBUG_COMMON, "Sending my address: %s.\n", la_it->tostring().c_str() );
     uint8_t addrlen = la_it->addrlen;
-    payload += string( (char *) &addrlen, 1 ) + string( (char *) &la_it->sa, addrlen );
+    /* Set our listening port. */
+    if ( tmp.sa.sa_family == AF_INET ) {
+      tmp.sin.sin_port = send_socket->local_addr.sin.sin_port;
+    } else if ( tmp.sa.sa_family == AF_INET6 ) {
+      tmp.sin6.sin6_port = send_socket->local_addr.sin6.sin6_port;
+    }
+    payload += string( (char *) &addrlen, 1 ) + string( (char *) &tmp.sa, addrlen );
   }
   send( ADDR_FLAG, payload );
 }
