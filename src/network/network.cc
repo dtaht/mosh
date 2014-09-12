@@ -341,7 +341,8 @@ void Connection::Socket::socket_init( int lower_port, int higher_port )
   if ( errcode != 0 ) {
     throw NetworkException( std::string( "bind: getnameinfo: " ) + gai_strerror( errcode ), 0 );
   }
-  fprintf( stderr, "Failed binding to %s:%s\n", host, serv );
+  errno = saved_errno;
+  log_msg( LOG_PERROR, "Failed binding to %s:%s", host, serv );
   throw NetworkException( "bind", saved_errno );
 }
 
