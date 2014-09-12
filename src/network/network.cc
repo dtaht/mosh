@@ -547,7 +547,6 @@ void Connection::refill_socks( std::set< Addr > &addresses )
 	next_sock_id ++;
 	socks.push_back( send_socket );
       } catch ( NetworkException & e ) {
-	rebind = true;
 	log_dbg( LOG_DEBUG_COMMON, "Failed to bind at %s (%s)\n", la_it->tostring().c_str(), strerror( e.the_errno ) );
       }
     }
@@ -566,7 +565,6 @@ void Connection::refill_socks( std::set< Addr > &addresses )
 	  send_socket = new Socket( whatever, 0, 0, *ra_it, next_sock_id++ );
 	  break;
 	}  catch ( NetworkException & e ) {
-	  rebind = true;
 	  log_dbg( LOG_DEBUG_COMMON, "Failed to bind whatever on IPv%c\n",
 		   whatever.sa.sa_family == AF_INET ? '4' : '6' );
 	}
@@ -721,8 +719,8 @@ void Connection::send( uint16_t flags, string s )
       fprintf( stderr, "Server now detached from client.\n" );
     }
   } else { /* client */
-    if ( ( now - last_port_choice > PORT_HOP_INTERVAL )
-	 && ( now - last_roundtrip_success > PORT_HOP_INTERVAL ) ) {
+    if ( ( ( now - last_port_choice > PORT_HOP_INTERVAL )
+	   && ( now - last_roundtrip_success > PORT_HOP_INTERVAL ) ) || rebind ) {
       hop_port();
     }
   }
