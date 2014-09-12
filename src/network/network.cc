@@ -516,8 +516,8 @@ void Connection::refill_socks( std::set< Addr > &addresses )
   assert( !send_socket && socks.empty() );
 
   for ( std::vector< Addr >::const_iterator ra_it = remote_addr.begin();
-	ra_it != remote_addr.end();
-	ra_it++) {
+	ra_it != received_remote_addr.end();
+	ra_it = (ra_it == remote_addr.end()) ? received_remote_addr.begin() : ra_it++) {
 
     log_dbg( LOG_DEBUG_COMMON,
 	     "Trying to bind for the remote address: %s.\n",
