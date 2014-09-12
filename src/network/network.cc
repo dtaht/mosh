@@ -152,9 +152,19 @@ void Connection::hop_port( void )
   setup();
   assert( has_remote_addr() );
 
+  if ( received_remote_addr.size() == 0 ) {
+    /* The server probably didn't answer us the last time.  At least there should
+       be its link local addresses. */
+    send( ADDR_FLAG, string( "" ) );
+  }
+
   int has_change = 0;
   std::set< Addr > addresses = host_addresses.get_host_addresses( &has_change );
-  if (has_change) {
+  /* We should do something more clever: sorting Sockets by addresses, and then
+     check which one can be rebound, and which one should be created.  For now,
+     keep it "simple". */
+  if ( has_change || rebind ) {
+    rebind = false;
     while ( !socks.empty() ) {
       old_socks.push_back( socks.front() );
       socks.pop_front();
@@ -371,6 +381,7 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
     remote_addr(),
     received_remote_addr(),
     host_addresses(),
+    rebind( false ),
     server( true ),
     key(),
     session( key ),
@@ -462,6 +473,7 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
     remote_addr(),
     received_remote_addr(),
     host_addresses(),
+    rebind( false ),
     server( false ),
     key( key_str ),
     session( key ),
@@ -494,6 +506,9 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
 
   std::set< Addr > addresses = host_addresses.get_host_addresses( NULL );
   refill_socks( addresses );
+
+  /* Ask the server what are its addresses. */
+  send( ADDR_FLAG, string( "" ) );
 }
 
 void Connection::refill_socks( std::set< Addr > &addresses )
@@ -519,6 +534,7 @@ void Connection::refill_socks( std::set< Addr > &addresses )
 	next_sock_id ++;
 	socks.push_back( send_socket );
       } catch ( NetworkException & e ) {
+	rebind = true;
 	log_dbg( LOG_DEBUG_COMMON, "Failed to bind at %s (%s)\n", la_it->tostring().c_str(), strerror( e.the_errno ) );
       }
     }
@@ -537,6 +553,7 @@ void Connection::refill_socks( std::set< Addr > &addresses )
 	  send_socket = new Socket( whatever, 0, 0, *ra_it, next_sock_id++ );
 	  break;
 	}  catch ( NetworkException & e ) {
+	  rebind = true;
 	  log_dbg( LOG_DEBUG_COMMON, "Failed to bind whatever on IPv%c\n",
 		   whatever.sa.sa_family == AF_INET ? '4' : '6' );
 	}
@@ -609,6 +626,7 @@ void Connection::parse_received_addresses( string payload )
 			    remote_addr.begin(), remote_addr.end(),
 			    received_remote_addr.begin() );
   received_remote_addr.resize( it - received_remote_addr.begin() );
+  rebind = true;
 }
 
 bool Connection::send_probe( Socket *sock, Addr &addr )

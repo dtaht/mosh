@@ -154,6 +154,7 @@ namespace Network {
     std::vector< Addr > remote_addr;
     std::vector< Addr > received_remote_addr;
     Addresses host_addresses;
+    bool rebind;
 
     bool server;
 
