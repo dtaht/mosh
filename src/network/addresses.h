@@ -98,6 +98,10 @@ namespace Network {
       return ( sa.sa_family == AF_INET && IN_IS_ADDR_LOOPBACK( &sin.sin_addr ) ) ||
 	( sa.sa_family == AF_INET6 && IN6_IS_ADDR_LOOPBACK( &sin6.sin6_addr ) );
     }
+
+    bool is_linklocal( void ) const {
+      return sa.sa_family == AF_INET6 && IN6_IS_ADDR_LINKLOCAL( &sin6.sin6_addr );
+    }
   };
 
   class Addresses {
