@@ -521,11 +521,16 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
 
 void Connection::refill_socks( std::set< Addr > &addresses )
 {
-  assert( !send_socket && socks.empty() );
+  assert( !send_socket && socks.empty() && !remote_addr.empty() );
 
-  for ( std::vector< Addr >::const_iterator ra_it = remote_addr.begin();
-	ra_it != received_remote_addr.end();
-	ra_it = (ra_it == remote_addr.end()) ? received_remote_addr.begin() : ra_it++) {
+  std::vector< Addr >::const_iterator ra_it = remote_addr.begin();
+  while ( true ) {
+    if ( ra_it == remote_addr.end() ) {
+      ra_it = received_remote_addr.begin();
+    }
+    if ( ra_it == received_remote_addr.end() ) {
+      break;
+    }
 
     log_dbg( LOG_DEBUG_COMMON,
 	     "Trying to bind for the remote address: %s.\n",
@@ -568,6 +573,8 @@ void Connection::refill_socks( std::set< Addr > &addresses )
       }
       socks.push_back( send_socket );
     }
+
+    ra_it ++;
   }
 }
 
