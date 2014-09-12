@@ -89,6 +89,7 @@ namespace Network {
     Packet( string coded_packet, Session *session );
 
     bool is_probe( void );
+    bool is_addr_msg( void );
     string tostring( Session *session );
   };
 

@@ -105,6 +105,11 @@ bool Packet::is_probe( void )
   return flags & PROBE_FLAG;
 }
 
+bool Packet::is_addr_msg( void )
+{
+  return flags & ADDR_FLAG;
+}
+
 /* Output coded string from packet */
 string Packet::tostring( Session *session )
 {
@@ -840,6 +845,16 @@ string Connection::recv_one( Socket *sock, bool nonblocking )
 	}
 	fprintf( stderr, "Server now attached to client at %s:%s\n",
 		 host, serv );
+      }
+    }
+
+    if ( p.is_addr_msg() ) {
+      if ( server ) {
+	send_addresses();
+	assert( p.payload.empty() );
+      } else {
+	parse_received_addresses( p.payload );
+	p.payload = string("");
       }
     }
   }
