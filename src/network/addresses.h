@@ -47,7 +47,7 @@ namespace Network {
 
   struct Addr {
   public:
-    int addrlen;
+    int addrlen; /* length of the socket address (not just the IP address). */
     union {
       struct sockaddr sa;
       struct sockaddr_in sin;
