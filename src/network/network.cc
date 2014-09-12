@@ -190,8 +190,9 @@ void Connection::hop_port( void )
 	  send_socket = tmp;
 	}
       } catch ( NetworkException & e ) {
-	log_dbg( LOG_DEBUG_COMMON, "Failed to rebind %d (%s) : %s.\n", (int)old_sock->sock_id,
-		 old_sock->local_addr.tostring().c_str(), strerror( e.the_errno ) );
+	log_dbg( LOG_DEBUG_COMMON, "Failed to rebind %d (%s -> %s) : %s.\n", (int)old_sock->sock_id,
+		 old_sock->local_addr.tostring().c_str(), old_sock->remote_addr.tostring().c_str(),
+		 strerror( e.the_errno ) );
       }
     }
 
@@ -633,6 +634,7 @@ void Connection::parse_received_addresses( string payload )
       break;
     }
     addr.push_back( Addr( *(struct sockaddr *) (data + 1), addrlen ) );
+    log_dbg( LOG_DEBUG_COMMON, "Remote address received: %s.\n", addr.back().tostring().c_str() );
     data += 1 + addrlen;
     size -= 1 + addrlen;
   }
@@ -657,13 +659,16 @@ bool Connection::send_probe( Socket *sock, Addr &addr )
 
   string p = px.tostring( &session );
 
-  log_dbg( LOG_DEBUG_COMMON, "Sending probe on %d (%s).\n", (int)sock->sock_id,
-	   sock->local_addr.tostring().c_str() );
+  log_dbg( LOG_DEBUG_COMMON, "Sending probe on %d (%s -> %s): ", (int)sock->sock_id,
+	   sock->local_addr.tostring().c_str(), sock->remote_addr.tostring().c_str() );
+
   ssize_t bytes_sent = sendto( sock->fd(), p.data(), p.size(), MSG_DONTWAIT,
 			       &addr.sa, addr.addrlen );
   if ( bytes_sent < 0 ) {
     send_socket->SRTT += 1000;
-    log_dbg( LOG_PERROR, "Sending probe failed" );
+    log_dbg( LOG_PERROR, "failed" );
+  } else {
+    log_dbg( LOG_DEBUG_COMMON, "sucess.\n" );
   }
 
   return ( bytes_sent != static_cast<ssize_t>( p.size() ) );
@@ -693,9 +698,11 @@ void Connection::send( uint16_t flags, string s )
     } else {
       if ( send_socket != sock ) {
 	log_dbg( LOG_DEBUG_COMMON,
-		 ": done by switching from socket %d (%s, SRTT=%dms) to %d (%s, SRTT=%dms).\n",
-		 (int)send_socket->sock_id, send_socket->local_addr.tostring().c_str(), (int)send_socket->SRTT,
-		 (int)sock->sock_id, sock->local_addr.tostring().c_str(), (int)sock->SRTT );
+		 ": done by switching from socket %d (%s -> %s, SRTT=%dms) to %d (%s -> %s, SRTT=%dms).\n",
+		 (int)send_socket->sock_id, send_socket->local_addr.tostring().c_str(),
+		 send_socket->remote_addr.tostring().c_str(), (int)send_socket->SRTT,
+		 (int)sock->sock_id, sock->local_addr.tostring().c_str(),
+		 sock->remote_addr.tostring().c_str(), (int)sock->SRTT );
 	send_socket = sock;
       } else {
 	log_dbg( LOG_DEBUG_COMMON, ": done on %d (%s).\n",
