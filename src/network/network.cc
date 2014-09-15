@@ -582,13 +582,13 @@ void Connection::bind_to_each( std::set< Addr > &addresses, const Addr &remote_a
       whatever.sa.sa_family = family[i];
       try {
 	send_socket = new Socket( whatever, 0, 0, remote_addr, next_sock_id++ );
+	socks.push_back( send_socket );
 	break;
       }  catch ( NetworkException & e ) {
 	log_dbg( LOG_DEBUG_COMMON, "Failed to bind whatever on IPv%c\n",
 		 whatever.sa.sa_family == AF_INET ? '4' : '6' );
       }
     }
-    socks.push_back( send_socket );
   }
 }
 
