@@ -182,6 +182,7 @@ namespace Network {
 
     Socket *sock( void ) const { assert( !socks.empty() ); return send_socket ? send_socket : socks.back(); }
     void refill_socks( std::set< Addr > &addresses );
+    void bind_to_each( std::set< Addr > &addresses, const Addr &remote_addr );
     void prune_sockets( void );
 
     void send_addresses( void );

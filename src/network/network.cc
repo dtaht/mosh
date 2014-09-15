@@ -539,43 +539,48 @@ void Connection::refill_socks( std::set< Addr > &addresses )
 	     "Trying to bind for the remote address: %s.\n",
 	     ra_it->tostring().c_str() );
 
-    for ( std::set< Addr >::const_iterator la_it = addresses.begin();
-	  la_it != addresses.end();
-	  la_it++ ) {
-      if ( la_it->sa.sa_family != ra_it->sa.sa_family ) {
-	continue;
-      }
-      try {
-	send_socket = new Socket( *la_it, 0, 0, *ra_it, next_sock_id );
-	next_sock_id ++;
-	socks.push_back( send_socket );
-      } catch ( NetworkException & e ) {
-	log_dbg( LOG_DEBUG_COMMON, "Failed to bind at %s (%s)\n", la_it->tostring().c_str(), strerror( e.the_errno ) );
-      }
-    }
-
-    log_dbg( LOG_DEBUG_COMMON, "%d sockets successfully bound\n", (int)socks.size() );
-
-    if ( !send_socket ) {
-      fprintf( stderr, "Failed binding to any local address\n" );
-      /* Try to continue with that; we will retry binding later... */
-      Addr whatever;
-      int family[2] = { AF_INET, AF_INET6 };
-      memset( &whatever.ss, 0, sizeof( whatever.ss ) );
-      for ( int i = 0; i < 2; i ++ ) {
-	whatever.sa.sa_family = family[i];
-	try {
-	  send_socket = new Socket( whatever, 0, 0, *ra_it, next_sock_id++ );
-	  break;
-	}  catch ( NetworkException & e ) {
-	  log_dbg( LOG_DEBUG_COMMON, "Failed to bind whatever on IPv%c\n",
-		   whatever.sa.sa_family == AF_INET ? '4' : '6' );
-	}
-      }
-      socks.push_back( send_socket );
-    }
+    bind_to_each( addresses, *ra_it);
 
     ra_it ++;
+  }
+}
+
+void Connection::bind_to_each( std::set< Addr > &addresses, const Addr &remote_addr )
+{
+  for ( std::set< Addr >::const_iterator la_it = addresses.begin();
+	la_it != addresses.end();
+	la_it++ ) {
+    if ( la_it->sa.sa_family != remote_addr.sa.sa_family ) {
+      continue;
+    }
+    try {
+      send_socket = new Socket( *la_it, 0, 0, remote_addr, next_sock_id );
+      next_sock_id ++;
+      socks.push_back( send_socket );
+    } catch ( NetworkException & e ) {
+      log_dbg( LOG_DEBUG_COMMON, "Failed to bind at %s (%s)\n", la_it->tostring().c_str(), strerror( e.the_errno ) );
+    }
+  }
+
+  log_dbg( LOG_DEBUG_COMMON, "%d sockets successfully bound\n", (int)socks.size() );
+
+  if ( !send_socket ) {
+    fprintf( stderr, "Failed binding to any local address\n" );
+    /* Try to continue with that; we will retry binding later... */
+    Addr whatever;
+    int family[2] = { AF_INET, AF_INET6 };
+    memset( &whatever.ss, 0, sizeof( whatever.ss ) );
+    for ( int i = 0; i < 2; i ++ ) {
+      whatever.sa.sa_family = family[i];
+      try {
+	send_socket = new Socket( whatever, 0, 0, remote_addr, next_sock_id++ );
+	break;
+      }  catch ( NetworkException & e ) {
+	log_dbg( LOG_DEBUG_COMMON, "Failed to bind whatever on IPv%c\n",
+		 whatever.sa.sa_family == AF_INET ? '4' : '6' );
+      }
+    }
+    socks.push_back( send_socket );
   }
 }
 
