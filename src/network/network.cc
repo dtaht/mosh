@@ -319,6 +319,12 @@ void Connection::Socket::socket_init( int lower_port, int higher_port )
     }
   }
 
+  int yes = 1;
+  if ( setsockopt( _fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes) ) ) {
+    log_dbg( LOG_DEBUG_COMMON, "Fail reusing port.\n" );
+    throw NetworkException( "setsockopt( SO_REUSEPORT )", errno );
+  }
+
   /* now, try to bind. */
   if ( family == AF_INET ) {
     local_addr_len = sizeof( struct sockaddr_in );
