@@ -559,28 +559,8 @@ void Connection::refill_socks( std::vector< Addr > &addresses )
 
     ra_it ++;
   }
-}
 
-void Connection::bind_to_each( std::vector< Addr > &addresses, const Addr &remote_addr )
-{
-  for ( std::vector< Addr >::const_iterator la_it = addresses.begin();
-	la_it != addresses.end();
-	la_it++ ) {
-    if ( la_it->sa.sa_family != remote_addr.sa.sa_family ) {
-      continue;
-    }
-    try {
-      send_socket = new Socket( *la_it, 0, 0, remote_addr, next_sock_id );
-      next_sock_id ++;
-      socks.push_back( send_socket );
-    } catch ( NetworkException & e ) {
-      log_dbg( LOG_DEBUG_COMMON, "Failed to bind at %s (%s)\n", la_it->tostring().c_str(), strerror( e.the_errno ) );
-    }
-  }
-
-  log_dbg( LOG_DEBUG_COMMON, "%d sockets successfully bound\n", (int)socks.size() );
-
-  if ( !send_socket ) {
+  if ( socks.empty() ) {
     fprintf( stderr, "Failed binding to any local address\n" );
     /* Try to continue with that; we will retry binding later... */
     Addr whatever;
@@ -589,7 +569,7 @@ void Connection::bind_to_each( std::vector< Addr > &addresses, const Addr &remot
     for ( int i = 0; i < 2; i ++ ) {
       whatever.sa.sa_family = family[i];
       try {
-	send_socket = new Socket( whatever, 0, 0, remote_addr, next_sock_id++ );
+	send_socket = new Socket( whatever, 0, 0, *ra_it, next_sock_id++ );
 	socks.push_back( send_socket );
 	break;
       }  catch ( NetworkException & e ) {
@@ -597,7 +577,29 @@ void Connection::bind_to_each( std::vector< Addr > &addresses, const Addr &remot
 		 whatever.sa.sa_family == AF_INET ? '4' : '6' );
       }
     }
+  } else {
+    send_socket = socks.back();
   }
+}
+
+void Connection::bind_to_each( std::vector< Addr > &addresses, const Addr &remote_address )
+{
+  for ( std::vector< Addr >::const_iterator la_it = addresses.begin();
+	la_it != addresses.end();
+	la_it++ ) {
+    if ( remote_address.sa.sa_family && la_it->sa.sa_family != remote_address.sa.sa_family ) {
+      continue;
+    }
+    try {
+      Socket *tmp = new Socket( *la_it, 0, 0, remote_address, next_sock_id );
+      next_sock_id ++;
+      socks.push_back( tmp );
+    } catch ( NetworkException & e ) {
+      log_dbg( LOG_DEBUG_COMMON, "Failed to bind to %s (%s)\n", la_it->tostring().c_str(), strerror( e.the_errno ) );
+    }
+  }
+
+  log_dbg( LOG_DEBUG_COMMON, "%d sockets successfully bound\n", (int)socks.size() );
 }
 
 void Connection::send_probes( void )
