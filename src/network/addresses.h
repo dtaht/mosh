@@ -56,7 +56,7 @@ namespace Network {
       struct sockaddr_storage ss;
     };
 
-    Addr() : addrlen( sizeof( ss ) ), ss() {}
+    Addr() : addrlen( sizeof( ss ) ), ss() { memset( &ss, 0, sizeof( ss ) ); }
     Addr( struct sockaddr &s ) {
       switch ( s.sa_family ) {
       case AF_UNSPEC: addrlen = 0;              break;
