@@ -537,6 +537,7 @@ void serve( int host_fd, Terminal::Complete &terminal, ServerConnection &network
 
   while ( 1 ) {
     try {
+      bool network_problem = false;
       uint64_t now = Network::timestamp();
 
       const int timeout_if_no_client = 60000;
@@ -549,9 +550,11 @@ void serve( int host_fd, Terminal::Complete &terminal, ServerConnection &network
       /* poll for events */
       sel.clear_fds();
       std::vector< int > fd_list( network.fds() );
-      assert( fd_list.size() == 1 ); /* servers don't hop */
-      int network_fd = fd_list.back();
-      sel.add_fd( network_fd );
+      for ( std::vector< int >::const_iterator it = fd_list.begin();
+	    it != fd_list.end();
+	    it++ ) {
+	sel.add_fd( *it );
+      }
       if ( !network.shutdown_in_progress() ) {
 	sel.add_fd( host_fd );
       }
@@ -565,82 +568,91 @@ void serve( int host_fd, Terminal::Complete &terminal, ServerConnection &network
       now = Network::timestamp();
       uint64_t time_since_remote_state = now - network.get_latest_remote_state().timestamp;
 
-      if ( sel.read( network_fd ) ) {
-	/* packet received from the network */
-	network.recv();
-	
-	/* is new user input available for the terminal? */
-	if ( network.get_remote_state_num() != last_remote_num ) {
-	  last_remote_num = network.get_remote_state_num();
+      for ( std::vector< int >::const_iterator it = fd_list.begin();
+	    it != fd_list.end();
+	    it++ ) {
+	if ( sel.read( *it ) ) {
+	  /* packet received from the network */
+	  network.recv();
 
-	  string terminal_to_host;
-	  
-	  Network::UserStream us;
-	  us.apply_string( network.get_remote_diff() );
-	  /* apply userstream to terminal */
-	  for ( size_t i = 0; i < us.size(); i++ ) {
-	    terminal_to_host += terminal.act( us.get_action( i ) );
-	    if ( typeid( *us.get_action( i ) ) == typeid( Parser::Resize ) ) {
-	      /* tell child process of resize */
-	      const Parser::Resize *res = static_cast<const Parser::Resize *>( us.get_action( i ) );
-	      struct winsize window_size;
-	      if ( ioctl( host_fd, TIOCGWINSZ, &window_size ) < 0 ) {
-		perror( "ioctl TIOCGWINSZ" );
-		return;
-	      }
-	      window_size.ws_col = res->width;
-	      window_size.ws_row = res->height;
-	      if ( ioctl( host_fd, TIOCSWINSZ, &window_size ) < 0 ) {
-		perror( "ioctl TIOCSWINSZ" );
-		return;
+	  /* is new user input available for the terminal? */
+	  if ( network.get_remote_state_num() != last_remote_num ) {
+	    last_remote_num = network.get_remote_state_num();
+
+	    string terminal_to_host;
+
+	    Network::UserStream us;
+	    us.apply_string( network.get_remote_diff() );
+	    /* apply userstream to terminal */
+	    for ( size_t i = 0; i < us.size(); i++ ) {
+	      terminal_to_host += terminal.act( us.get_action( i ) );
+	      if ( typeid( *us.get_action( i ) ) == typeid( Parser::Resize ) ) {
+		/* tell child process of resize */
+		const Parser::Resize *res = static_cast<const Parser::Resize *>( us.get_action( i ) );
+		struct winsize window_size;
+		if ( ioctl( host_fd, TIOCGWINSZ, &window_size ) < 0 ) {
+		  perror( "ioctl TIOCGWINSZ" );
+		  return;
+		}
+		window_size.ws_col = res->width;
+		window_size.ws_row = res->height;
+		if ( ioctl( host_fd, TIOCSWINSZ, &window_size ) < 0 ) {
+		  perror( "ioctl TIOCSWINSZ" );
+		  return;
+		}
 	      }
 	    }
-	  }
 
-	  if ( !us.empty() ) {
-	    /* register input frame number for future echo ack */
-	    terminal.register_input_frame( last_remote_num, now );
-	  }
-
-	  /* update client with new state of terminal */
-	  if ( !network.shutdown_in_progress() ) {
-	    network.set_current_state( terminal );
-	  }
-	  
-	  /* write any writeback octets back to the host */
-	  if ( swrite( host_fd, terminal_to_host.c_str(), terminal_to_host.length() ) < 0 ) {
-	    break;
-	  }
-
-	  #ifdef HAVE_UTEMPTER
-	  /* update utmp entry if we have become "connected" */
-	  if ( (!connected_utmp)
-	       || saved_addr_len != network.get_remote_addr_len()
-	       || memcmp( &saved_addr, &network.get_remote_addr(),
-			  saved_addr_len ) != 0 ) {
-	    utempter_remove_record( host_fd );
-
-	    saved_addr = network.get_remote_addr();
-	    saved_addr_len = network.get_remote_addr_len();
-
-	    char host[ NI_MAXHOST ];
-	    int errcode = getnameinfo( &saved_addr.sa, saved_addr_len,
-				       host, sizeof( host ), NULL, 0,
-				       NI_NUMERICHOST );
-	    if ( errcode != 0 ) {
-	      throw NetworkException( std::string( "serve: getnameinfo: " ) + gai_strerror( errcode ), 0 );
+	    if ( !us.empty() ) {
+	      /* register input frame number for future echo ack */
+	      terminal.register_input_frame( last_remote_num, now );
 	    }
 
-	    char tmp[ 64 ];
-	    snprintf( tmp, 64, "%s via mosh [%d]", host, getpid() );
-	    utempter_add_record( host_fd, tmp );
+	    /* update client with new state of terminal */
+	    if ( !network.shutdown_in_progress() ) {
+	      network.set_current_state( terminal );
+	    }
 
-	    connected_utmp = true;
+	    /* write any writeback octets back to the host */
+	    if ( swrite( host_fd, terminal_to_host.c_str(), terminal_to_host.length() ) < 0 ) {
+	      break;
+	    }
+
+	    #ifdef HAVE_UTEMPTER
+	    /* update utmp entry if we have become "connected" */
+	    if ( (!connected_utmp)
+		 || saved_addr_len != network.get_remote_addr_len()
+		 || memcmp( &saved_addr, &network.get_remote_addr(),
+			    saved_addr_len ) != 0 ) {
+	      utempter_remove_record( host_fd );
+
+	      saved_addr = network.get_remote_addr();
+	      saved_addr_len = network.get_remote_addr_len();
+
+	      char host[ NI_MAXHOST ];
+	      int errcode = getnameinfo( &saved_addr.sa, saved_addr_len,
+					 host, sizeof( host ), NULL, 0,
+					 NI_NUMERICHOST );
+	      if ( errcode != 0 ) {
+		throw NetworkException( std::string( "serve: getnameinfo: " ) + gai_strerror( errcode ), 0 );
+	      }
+
+	      char tmp[ 64 ];
+	      snprintf( tmp, 64, "%s via mosh [%d]", host, getpid() );
+	      utempter_add_record( host_fd, tmp );
+
+	      connected_utmp = true;
+	    }
+	    #endif
 	  }
-	  #endif
+	}
+
+	if ( sel.error( *it ) ) {
+	  network_problem = true;
+	  break;
 	}
       }
-      
+
       if ( (!network.shutdown_in_progress()) && sel.read( host_fd ) ) {
 	/* input from the host needs to be fed to the terminal */
 	const int buf_size = 16384;
@@ -674,9 +686,8 @@ void serve( int host_fd, Terminal::Complete &terminal, ServerConnection &network
 	  break;
 	}
       }
-      
-      if ( sel.error( network_fd ) ) {
-	/* network problem */
+
+      if ( network_problem ) {
 	break;
       }
 
