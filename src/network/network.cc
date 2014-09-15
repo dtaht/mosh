@@ -249,7 +249,7 @@ Connection::Socket::Socket( Socket *old ) /* For port hoping, client only. */
     next_seq( old->next_seq ),
     sock_id( old->sock_id ),
     local_addr( old->local_addr ),
-    remote_addr( old->local_addr )
+    remote_addr( old->remote_addr )
 {
   socket_init( 0, 0 );
 }
