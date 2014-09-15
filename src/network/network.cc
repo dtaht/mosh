@@ -693,7 +693,7 @@ bool Connection::send_probe( Socket *sock, Addr &addr )
     send_socket->SRTT += 1000;
     log_dbg( LOG_PERROR, "failed" );
   } else {
-    log_dbg( LOG_DEBUG_COMMON, "sucess.\n" );
+    log_dbg( LOG_DEBUG_COMMON, "success.\n" );
   }
 
   return ( bytes_sent != static_cast<ssize_t>( p.size() ) );
