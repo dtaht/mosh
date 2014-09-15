@@ -703,31 +703,38 @@ void Connection::send( uint16_t flags, string s )
 
   string p = px.tostring( &session );
 
-  std::sort( socks.begin(), socks.end(), Socket::srtt_order );
   ssize_t bytes_sent = -1;
-  log_dbg( LOG_DEBUG_COMMON, "Sending data" );
-  for ( std::deque< Socket* >::const_iterator it = socks.begin();
-	it != socks.end();
-	it++ ) {
-    Socket *sock = *it;
-    bytes_sent = sendto( sock->fd(), p.data(), p.size(), MSG_DONTWAIT,
-			 &sock->remote_addr.sa, sock->remote_addr.addrlen );
-    if ( bytes_sent < 0 ) {
-      sock->SRTT += 1000;
-    } else {
-      if ( send_socket != sock ) {
-	log_dbg( LOG_DEBUG_COMMON,
-		 ": done by switching from socket %d (%s -> %s, SRTT=%dms) to %d (%s -> %s, SRTT=%dms).\n",
-		 (int)send_socket->sock_id, send_socket->local_addr.tostring().c_str(),
-		 send_socket->remote_addr.tostring().c_str(), (int)send_socket->SRTT,
-		 (int)sock->sock_id, sock->local_addr.tostring().c_str(),
-		 sock->remote_addr.tostring().c_str(), (int)sock->SRTT );
-	send_socket = sock;
+
+  if ( server ) {
+    /* only send on the last heard socket. */
+    bytes_sent = sendto( send_socket->fd(), p.data(), p.size(), MSG_DONTWAIT,
+			 &send_socket->remote_addr.sa, send_socket->remote_addr.addrlen );
+  } else {
+    std::sort( socks.begin(), socks.end(), Socket::srtt_order );
+    log_dbg( LOG_DEBUG_COMMON, "Sending data" );
+    for ( std::deque< Socket* >::const_iterator it = socks.begin();
+	  it != socks.end();
+	  it++ ) {
+      Socket *sock = *it;
+      bytes_sent = sendto( sock->fd(), p.data(), p.size(), MSG_DONTWAIT,
+			   &sock->remote_addr.sa, sock->remote_addr.addrlen );
+      if ( bytes_sent < 0 ) {
+	sock->SRTT += 1000;
       } else {
-	log_dbg( LOG_DEBUG_COMMON, ": done on %d (%s).\n",
-		 (int)send_socket->sock_id, send_socket->local_addr.tostring().c_str() );
+	if ( send_socket != sock ) {
+	  log_dbg( LOG_DEBUG_COMMON,
+		   ": done by switching from socket %d (%s -> %s, SRTT=%dms) to %d (%s -> %s, SRTT=%dms).\n",
+		   (int)send_socket->sock_id, send_socket->local_addr.tostring().c_str(),
+		   send_socket->remote_addr.tostring().c_str(), (int)send_socket->SRTT,
+		   (int)sock->sock_id, sock->local_addr.tostring().c_str(),
+		   sock->remote_addr.tostring().c_str(), (int)sock->SRTT );
+	  send_socket = sock;
+	} else {
+	  log_dbg( LOG_DEBUG_COMMON, ": done on %d (%s).\n",
+		   (int)send_socket->sock_id, send_socket->local_addr.tostring().c_str() );
+	}
+	break;
       }
-      break;
     }
   }
 
