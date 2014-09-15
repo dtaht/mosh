@@ -311,6 +311,14 @@ void Connection::Socket::socket_init( int lower_port, int higher_port )
   }
 #endif
 
+  /* If the local address is IPV6 and ADDR_ANY, make it hybrid. */
+  if ( local_addr.sa.sa_family == AF_INET6 && IN6_IS_ADDR_UNSPECIFIED( &local_addr.sin6.sin6_addr) ) {
+    int off = 0;
+    if ( setsockopt( _fd, IPPROTO_IPV6, IPV6_V6ONLY, &off, sizeof(off))) {
+      perror("setsockopt( IPV6_V6ONLY off )");
+    }
+  }
+
   /* now, try to bind. */
   if ( family == AF_INET ) {
     local_addr_len = sizeof( struct sockaddr_in );
