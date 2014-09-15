@@ -68,18 +68,22 @@ std::vector< Addr > Addresses::get_host_addresses( int *has_change )
 
 string Addr::tostring( void ) const {
   string result;
-  char dst[INET6_ADDRSTRLEN];
+  char dst[INET6_ADDRSTRLEN + 6];
   int family = sa.sa_family;
+  int port;
   const char *tmp;
   void *addr;
   if (family == AF_INET) {
     addr = (void*) &sin.sin_addr;
+    port = ntohs( sin.sin_port );
   } else if (family == AF_INET6) {
     addr = (void*) &sin6.sin6_addr;
+    port = ntohs( sin6.sin6_port );
   } else {
-    return string("");
+    return string("<Unknown protocol family address>");
   }
   tmp = inet_ntop(family, addr, dst, INET6_ADDRSTRLEN);
+  sprintf( dst + strlen(tmp), ":%d", port );
   return string( tmp );
 }
 
