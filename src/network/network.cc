@@ -335,16 +335,18 @@ void Connection::Socket::socket_init( int lower_port, int higher_port )
   }
 
   for ( int i = lower_port; i <= higher_port; i++ ) {
-    if ( family == AF_INET ) {
-      local_addr.sin.sin_port = htons( i );
-    } else if ( family == AF_INET6 ) {
-      local_addr.sin6.sin6_port = htons( i );
+    if ( i != 0 ) { /* Otherwise, it will use the port set in the Addr. */
+      if ( family == AF_INET ) {
+	local_addr.sin.sin_port = htons( i );
+      } else if ( family == AF_INET6 ) {
+	local_addr.sin6.sin6_port = htons( i );
+      }
     }
 
     rc = bind( _fd, &local_addr.sa, local_addr_len );
     if ( rc == 0 ) {
-      log_dbg( LOG_DEBUG_COMMON, "New Socket %d bound to %s for %s.\n", sock_id,
-	       local_addr.tostring().c_str(), remote_addr.tostring().c_str() );
+      log_dbg( LOG_DEBUG_COMMON, "New Socket %d bound to %s for %s.\n", sock_id, local_addr.tostring().c_str(),
+	       remote_addr.sa.sa_family == AF_UNSPEC ? "listening" : remote_addr.tostring().c_str() );
       return;
     }
   }
