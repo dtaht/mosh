@@ -624,19 +624,27 @@ void Connection::send_addresses( void )
   for ( std::vector< Addr >::const_iterator la_it = addresses.begin();
 	la_it != addresses.end();
 	la_it++ ) {
-    if ( la_it->addrlen > 255 ) {
+    uint8_t len;
+    uint8_t family = la_it->sa.sa_family;
+    uint16_t port = send_socket->local_addr.sin.sin_port;
+    char *addr = NULL;
+    int addrlen;
+    /* Set our listening port. */
+    if ( la_it->sa.sa_family == AF_INET ) {
+      addrlen = 4;
+      memcpy(addr, &la_it->sin.sin_addr, 4);
+    } else if ( la_it->sa.sa_family == AF_INET6 ) {
+      addrlen = 16;
+      memcpy(addr, &la_it->sin6.sin6_addr, 16);
+    } else {
       continue;
     }
-    Addr tmp = *la_it; /* because la_it is "const"... using a vector instead ? */
+    len = 1 + 2 + addrlen; /* "len" is not considered */
     log_dbg( LOG_DEBUG_COMMON, "Sending my address: %s.\n", la_it->tostring().c_str() );
-    uint8_t addrlen = la_it->addrlen;
-    /* Set our listening port. */
-    if ( tmp.sa.sa_family == AF_INET ) {
-      tmp.sin.sin_port = send_socket->local_addr.sin.sin_port;
-    } else if ( tmp.sa.sa_family == AF_INET6 ) {
-      tmp.sin6.sin6_port = send_socket->local_addr.sin6.sin6_port;
-    }
-    payload += string( (char *) &addrlen, 1 ) + string( (char *) &tmp.sa, addrlen );
+    payload += string( (char *) &len, 1 ) +
+      string( (char *) &family, 1 ) +
+      string( (char *) &port, 2 ) +
+      string( (char *) addr, addrlen );
   }
   send( ADDR_FLAG, payload );
 }
@@ -647,15 +655,24 @@ void Connection::parse_received_addresses( string payload )
   const unsigned char *data = (const unsigned char*) payload.data();
   std::vector< Addr > addr;
   while( size > 0 ) {
-    int addrlen = (int)data[0];
-    if ( size < 1 + addrlen ) {
+    int len = (int)data[0];
+    if ( size < 1 + len ) {
       log_dbg( LOG_DEBUG_COMMON, "Truncated message received.\n" );
       break;
     }
-    addr.push_back( Addr( *(struct sockaddr *) (data + 1), addrlen ) );
-    log_dbg( LOG_DEBUG_COMMON, "Remote address received: %s.\n", addr.back().tostring().c_str() );
-    data += 1 + addrlen;
-    size -= 1 + addrlen;
+    Addr tmp;
+    tmp.sa.sa_family = data[1];
+    if ( tmp.sa.sa_family == AF_INET ) {
+      memcpy(&tmp.sin.sin_port, data + 2, 2);
+      memcpy(&tmp.sin.sin_addr, data + 4, 4);
+    } else if ( tmp.sa.sa_family == AF_INET6 ) {
+      memcpy(&tmp.sin6.sin6_port, data + 2, 2);
+      memcpy(&tmp.sin6.sin6_addr, data + 4, 16);
+    }
+    addr.push_back( tmp );
+    log_dbg( LOG_DEBUG_COMMON, "Remote address received: %s.\n", tmp.tostring().c_str() );
+    data += 1 + len;
+    size -= 1 + len;
   }
   assert( size == 0 );
 
