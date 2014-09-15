@@ -159,7 +159,7 @@ void Connection::hop_port( void )
   }
 
   int has_change = 0;
-  std::set< Addr > addresses = host_addresses.get_host_addresses( &has_change );
+  std::vector< Addr > addresses = host_addresses.get_host_addresses( &has_change );
   /* We should do something more clever: sorting Sockets by addresses, and then
      check which one can be rebound, and which one should be created.  For now,
      keep it "simple". */
@@ -523,14 +523,14 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
     remote_addr.push_back( Addr( *it->ai_addr, it->ai_addrlen ) );
   }
 
-  std::set< Addr > addresses = host_addresses.get_host_addresses( NULL );
+  std::vector< Addr > addresses = host_addresses.get_host_addresses( NULL );
   refill_socks( addresses );
 
   /* Ask the server what are its addresses. */
   send( ADDR_FLAG, string( "" ) );
 }
 
-void Connection::refill_socks( std::set< Addr > &addresses )
+void Connection::refill_socks( std::vector< Addr > &addresses )
 {
   assert( !send_socket && socks.empty() && !remote_addr.empty() );
 
@@ -553,9 +553,9 @@ void Connection::refill_socks( std::set< Addr > &addresses )
   }
 }
 
-void Connection::bind_to_each( std::set< Addr > &addresses, const Addr &remote_addr )
+void Connection::bind_to_each( std::vector< Addr > &addresses, const Addr &remote_addr )
 {
-  for ( std::set< Addr >::const_iterator la_it = addresses.begin();
+  for ( std::vector< Addr >::const_iterator la_it = addresses.begin();
 	la_it != addresses.end();
 	la_it++ ) {
     if ( la_it->sa.sa_family != remote_addr.sa.sa_family ) {
@@ -616,8 +616,8 @@ void Connection::send_addresses( void )
 {
   assert( server );
   string payload;
-  std::set< Addr > addresses = host_addresses.get_host_addresses( NULL );
-  for ( std::set< Addr >::const_iterator la_it = addresses.begin();
+  std::vector< Addr > addresses = host_addresses.get_host_addresses( NULL );
+  for ( std::vector< Addr >::const_iterator la_it = addresses.begin();
 	la_it != addresses.end();
 	la_it++ ) {
     if ( la_it->addrlen > 255 ) {

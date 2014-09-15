@@ -36,7 +36,6 @@
 #include <stdint.h>
 #include <deque>
 #include <map>
-#include <set>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <string>
@@ -180,8 +179,8 @@ namespace Network {
     void hop_port( void );
 
     Socket *sock( void ) const { assert( !socks.empty() ); return send_socket ? send_socket : socks.back(); }
-    void refill_socks( std::set< Addr > &addresses );
-    void bind_to_each( std::set< Addr > &addresses, const Addr &remote_addr );
+    void refill_socks( std::vector< Addr > &addresses );
+    void bind_to_each( std::vector< Addr > &addresses, const Addr &remote_addr );
     void prune_sockets( void );
 
     void send_addresses( void );

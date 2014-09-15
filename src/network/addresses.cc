@@ -38,12 +38,12 @@ extern "C" {
 
 using namespace Network;
 
-std::set< Addr > Addresses::get_host_addresses( int *has_change )
+std::vector< Addr > Addresses::get_host_addresses( int *has_change )
 {
   array_t kaddrs = get_kernel_addresses();
   array_iter_t iter;
   struct kernel_address *kaddr = NULL;
-  std::set< Addr > result;
+  std::set< Addr > addr;
   int changed = 0;
 
   init_iterator( &iter );
@@ -53,17 +53,17 @@ std::set< Addr > Addresses::get_host_addresses( int *has_change )
       continue;
     }
     log_dbg( LOG_DEBUG_COMMON, "Host address read: %s.\n", tmp.tostring().c_str() );
-    result.insert( tmp );
+    addr.insert( tmp );
   }
   free_array( &kaddrs, free );
-  changed = !( result == addresses );
+  changed = !( addr == addresses );
   if ( has_change ) {
       *has_change = changed;
   }
   if ( changed ) {
-      addresses = result;
+      addresses = addr;
   }
-  return result;
+  return std::vector< Addr >( addr.begin(), addr.end() );;
 }
 
 string Addr::tostring( void ) const {

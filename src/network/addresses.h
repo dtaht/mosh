@@ -37,6 +37,7 @@
 #include <netinet/in.h>
 #include <string.h>
 #include <set>
+#include <vector>
 #include <string>
 
 #define IN_IS_ADDR_LOOPBACK(sin) ( ( (char*)sin)[0] == 127 )
@@ -108,7 +109,7 @@ namespace Network {
   private:
     std::set< Addr > addresses;
   public:
-    std::set< Addr > get_host_addresses( int *has_change );
+    std::vector< Addr > get_host_addresses( int *has_change );
     int get_fd( void ); /* to monitor things */
   };
 }
