@@ -289,10 +289,10 @@ void Connection::Socket::socket_init( int lower_port, int higher_port )
 #ifdef HAVE_IP_MTU_DISCOVER
   int level = family == AF_INET ? IPPROTO_IP : IPPROTO_IPV6;
   int name  = family == AF_INET ? IP_MTU_DISCOVER : IPV6_MTU_DISCOVER;
-  char flag = family == AF_INET ? IP_PMTUDISC_DONT : IPV6_PMTUDISC_DONT;
+  int flag = family == AF_INET ? IP_PMTUDISC_DONT : IPV6_PMTUDISC_DONT;
   socklen_t optlen = sizeof( flag );
   if ( setsockopt( _fd, level, name, &flag, optlen ) < 0 ) {
-    throw NetworkException( "setsockopt", errno );
+    throw NetworkException( "setsockopt( MTU )", errno );
   }
 #endif
 
