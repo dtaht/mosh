@@ -110,8 +110,6 @@ namespace Network {
 
     static const int CONGESTION_TIMESTAMP_PENALTY = 500; /* ms */
 
-    bool try_bind( const char *addr, int port_low, int port_high );
-
     class Socket
     {
     private:
@@ -134,6 +132,7 @@ namespace Network {
       Addr remote_addr;
 
       int fd( void ) const { return _fd; }
+      void reuse_addr( void );
       static bool srtt_order( Socket *s1, Socket *s2 ) { return s1->SRTT < s2->SRTT; }
       static bool addr_order( Socket *s1, Socket *s2 ) { return s1->local_addr < s2->local_addr; }
       Socket( Addr addr_to_bind, int lower_port, int higher_port, Addr remote_addr, uint16_t id );

@@ -317,12 +317,11 @@ void Connection::Socket::socket_init( int lower_port, int higher_port )
     if ( setsockopt( _fd, IPPROTO_IPV6, IPV6_V6ONLY, &off, sizeof(off))) {
       perror("setsockopt( IPV6_V6ONLY off )");
     }
-  }
 
-  int yes = 1;
-  if ( setsockopt( _fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes) ) ) {
-    log_dbg( LOG_DEBUG_COMMON, "Fail reusing port.\n" );
-    throw NetworkException( "setsockopt( SO_REUSEPORT )", errno );
+    /* we want to set "reuse" later for this socket: if binding fails, it means
+       that some (other program?) is already bound to the port: try again. */
+  } else {
+    this->reuse_addr();
   }
 
   /* now, try to bind. */
@@ -363,6 +362,15 @@ void Connection::Socket::socket_init( int lower_port, int higher_port )
   errno = saved_errno;
   log_msg( LOG_PERROR, "Failed binding to %s:%s", host, serv );
   throw NetworkException( "bind", saved_errno );
+}
+
+void Connection::Socket::reuse_addr( void )
+{
+  int yes = 1;
+  if ( setsockopt( _fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes) ) ) {
+    log_dbg( LOG_DEBUG_COMMON, "Fail reusing port.\n" );
+    throw NetworkException( "setsockopt( SO_REUSEPORT )", errno );
+  }
 }
 
 void Connection::setup( void )
@@ -428,7 +436,9 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
   setup();
 
   /* The mosh wrapper always gives an IP request, in order
-     to deal with multihomed servers. The port is optional. */
+     to deal with multihomed servers.  Now we bind to all
+     possible addresses, the desired IP is ignored. The port
+     is optional. */
 
   /* If an IP request is given, we try to bind to that IP, but we also
      try INADDR_ANY. If a port request is given, we bind only to that port. */
@@ -441,20 +451,31 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
     throw NetworkException("Invalid port range", 0);
   }
 
-  /* try to bind to desired IP first */
-  if ( desired_ip ) {
-    try {
-      if ( try_bind( desired_ip, desired_port_low, desired_port_high ) ) { return; }
-    } catch ( const NetworkException& e ) {
-      fprintf( stderr, "Error binding to IP %s: %s: %s\n",
-	       desired_ip,
-	       e.function.c_str(), strerror( e.the_errno ) );
-    }
-  }
+  int search_low = desired_port_low != 0 ? desired_port_low : PORT_RANGE_LOW;
+  int search_high = desired_port_high != 0 ? desired_port_high : PORT_RANGE_HIGH;
 
-  /* now try any local interface */
+  /* Bind an hybrid IPv6 socket.  This is done to be sure the port is reserved for all addresses. */
   try {
-    if ( try_bind( NULL, desired_port_low, desired_port_high ) ) { return; }
+    Addr local_addr;
+    local_addr.sin6.sin6_family = AF_INET6;
+    Socket *sock_tmp = new Socket( local_addr, search_low, search_high, Addr(), next_sock_id++ );
+    sock_tmp->reuse_addr();
+    socks.push_back( sock_tmp );
+
+    /* Import local addresses with the right port number. */
+    std::vector< Addr > addresses = host_addresses.get_host_addresses( NULL );
+    for ( std::vector< Addr >::iterator it = addresses.begin();
+	  it != addresses.end();
+	  it ++ ) {
+      if ( it->sa.sa_family == AF_INET ) {
+	it->sin.sin_port = sock_tmp->local_addr.sin.sin_port;
+      } else if ( it->sa.sa_family == AF_INET6 ) {
+	it->sin6.sin6_port = sock_tmp->local_addr.sin6.sin6_port;
+      }
+    }
+
+    bind_to_each( addresses, Addr() );
+    return;
   } catch ( const NetworkException& e ) {
     fprintf( stderr, "Error binding to any interface: %s: %s\n",
 	     e.function.c_str(), strerror( e.the_errno ) );
@@ -463,33 +484,6 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
 
   assert( false );
   throw NetworkException( "Could not bind", errno );
-}
-
-bool Connection::try_bind( const char *addr, int port_low, int port_high )
-{
-  struct addrinfo hints;
-  memset( &hints, 0, sizeof( hints ) );
-  hints.ai_family = AF_UNSPEC;
-  hints.ai_socktype = SOCK_DGRAM;
-  hints.ai_flags = AI_PASSIVE | AI_NUMERICHOST | AI_NUMERICSERV;
-  AddrInfo ai( addr, "0", &hints );
-
-  Addr local_addr;
-  socklen_t local_addr_len = ai.res->ai_addrlen;
-  memcpy( &local_addr.sa, ai.res->ai_addr, local_addr_len );
-
-  int search_low = PORT_RANGE_LOW, search_high = PORT_RANGE_HIGH;
-
-  if ( port_low != 0 ) { /* low port preference */
-    search_low = port_low;
-  }
-  if ( port_high != 0 ) { /* high port preference */
-    search_high = port_high;
-  }
-
-  Socket *sock_tmp = new Socket( local_addr, search_low, search_high, Addr(), next_sock_id++ );
-  socks.push_back( sock_tmp );
-  return true;
 }
 
 Connection::Connection( const char *key_str, const char *ip, const char *port ) /* client */
