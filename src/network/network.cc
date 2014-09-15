@@ -454,7 +454,7 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
   int search_low = desired_port_low != 0 ? desired_port_low : PORT_RANGE_LOW;
   int search_high = desired_port_high != 0 ? desired_port_high : PORT_RANGE_HIGH;
 
-  /* Bind an hybrid IPv6 socket.  This is done to be sure the port is reserved for all addresses. */
+  /* Bind a hybrid IPv6 socket: used to reserve the port number for ALL addresses and special connections (local...) */
   try {
     Addr local_addr;
     local_addr.sin6.sin6_family = AF_INET6;
