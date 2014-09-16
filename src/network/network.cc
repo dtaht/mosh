@@ -704,7 +704,7 @@ bool Connection::send_probe( Socket *sock, Addr &addr )
   string p = px.tostring( &session );
 
   log_dbg( LOG_DEBUG_COMMON, "Sending probe on %d (%s -> %s): ", (int)sock->sock_id,
-	   sock->local_addr.tostring().c_str(), sock->remote_addr.tostring().c_str() );
+	   sock->local_addr.tostring().c_str(), addr.tostring().c_str() );
 
   ssize_t bytes_sent = sendto( sock->fd(), p.data(), p.size(), MSG_DONTWAIT,
 			       &addr.sa, addr.addrlen );
