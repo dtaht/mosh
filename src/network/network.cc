@@ -629,17 +629,19 @@ void Connection::send_addresses( void )
 	la_it != addresses.end();
 	la_it++ ) {
     uint8_t len;
-    uint8_t family = la_it->sa.sa_family;
+    uint8_t family;
     uint16_t port = send_socket->local_addr.sin.sin_port;
-    char *addr = NULL;
+    string addr;
     int addrlen;
     /* Set our listening port. */
     if ( la_it->sa.sa_family == AF_INET ) {
       addrlen = 4;
-      memcpy(addr, &la_it->sin.sin_addr, 4);
+      family = 4; /* AF_INET6 is not standard. */
+      addr = string( (char *) &la_it->sin.sin_addr, 4 );
     } else if ( la_it->sa.sa_family == AF_INET6 ) {
       addrlen = 16;
-      memcpy(addr, &la_it->sin6.sin6_addr, 16);
+      family = 6;
+      addr = string( (char *) &la_it->sin6.sin6_addr, 16 );
     } else {
       continue;
     }
@@ -648,7 +650,7 @@ void Connection::send_addresses( void )
     payload += string( (char *) &len, 1 ) +
       string( (char *) &family, 1 ) +
       string( (char *) &port, 2 ) +
-      string( (char *) addr, addrlen );
+      addr;
   }
   send( ADDR_FLAG, payload );
 }
@@ -665,11 +667,13 @@ void Connection::parse_received_addresses( string payload )
       break;
     }
     Addr tmp;
-    tmp.sa.sa_family = data[1];
-    if ( tmp.sa.sa_family == AF_INET ) {
+    uint8_t family = data[1];
+    if ( family == 4 ) {
+      tmp.sa.sa_family = AF_INET;
       memcpy(&tmp.sin.sin_port, data + 2, 2);
       memcpy(&tmp.sin.sin_addr, data + 4, 4);
-    } else if ( tmp.sa.sa_family == AF_INET6 ) {
+    } else if ( family == 6 ) {
+      tmp.sa.sa_family = AF_INET6;
       memcpy(&tmp.sin6.sin6_port, data + 2, 2);
       memcpy(&tmp.sin6.sin6_addr, data + 4, 16);
     }
