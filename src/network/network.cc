@@ -148,6 +148,7 @@ Packet Connection::new_packet( Socket *sock, uint16_t flags, string &s_payload )
 void Connection::hop_port( void )
 {
   assert( !server );
+  log_dbg( LOG_DEBUG_COMMON, "Hop port!\n" );
 
   setup();
   assert( has_remote_addr() );
@@ -578,6 +579,7 @@ void Connection::refill_socks( std::vector< Addr > &addresses )
   } else {
     send_socket = socks.back();
   }
+  log_dbg( LOG_DEBUG_COMMON, "%d sockets successfully bound\n", (int)socks.size() );
 }
 
 void Connection::bind_to_each( std::vector< Addr > &addresses, const Addr &remote_address )
@@ -596,8 +598,6 @@ void Connection::bind_to_each( std::vector< Addr > &addresses, const Addr &remot
       log_dbg( LOG_DEBUG_COMMON, "Failed to bind to %s (%s)\n", la_it->tostring().c_str(), strerror( e.the_errno ) );
     }
   }
-
-  log_dbg( LOG_DEBUG_COMMON, "%d sockets successfully bound\n", (int)socks.size() );
 }
 
 void Connection::send_probes( void )
