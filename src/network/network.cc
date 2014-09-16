@@ -152,10 +152,13 @@ void Connection::hop_port( void )
   setup();
   assert( has_remote_addr() );
 
-  if ( received_remote_addr.size() == 0 ) {
+  uint64_t now = timestamp();
+
+  if ( received_remote_addr.size() == 0 && now - last_addr_request > MAX_ADDR_REQUEST_INTERVAL ) {
     /* The server probably didn't answer us the last time.  At least there should
        be its link local addresses. */
     send( ADDR_FLAG, string( "" ) );
+    last_addr_request = now;
   }
 
   int has_change = 0;
@@ -530,6 +533,7 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
 
   /* Ask the server what are its addresses. */
   send( ADDR_FLAG, string( "" ) );
+  last_addr_request = timestamp();
 }
 
 void Connection::refill_socks( std::vector< Addr > &addresses )
@@ -555,7 +559,7 @@ void Connection::refill_socks( std::vector< Addr > &addresses )
   }
 
   if ( socks.empty() ) {
-    fprintf( stderr, "Failed binding to any local address\n" );
+    log_dbg( LOG_DEBUG_COMMON, "Failed binding to any specific local address, try a generic one.\n" );
     /* Try to continue with that; we will retry binding later... */
     Addr whatever;
     int family[2] = { AF_INET, AF_INET6 };

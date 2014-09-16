@@ -104,6 +104,7 @@ namespace Network {
 
     static const unsigned int SERVER_ASSOCIATION_TIMEOUT = 40000;
     static const unsigned int PORT_HOP_INTERVAL          = 10000;
+    static const unsigned int MAX_ADDR_REQUEST_INTERVAL  = 10000;
 
     static const unsigned int MAX_PORTS_OPEN             = 10; /* by active sockets (see prune_sockets()) */
     static const unsigned int MAX_OLD_SOCKET_AGE         = 60000;
@@ -167,6 +168,7 @@ namespace Network {
     uint64_t last_heard;
     uint64_t last_port_choice;
     uint64_t last_roundtrip_success; /* transport layer needs to tell us this */
+    uint64_t last_addr_request;
 
     /* Exception from send(), to be delivered if the frontend asks for it,
        without altering control flow. */
