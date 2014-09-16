@@ -563,7 +563,7 @@ void Connection::refill_socks( std::vector< Addr > &addresses )
     for ( int i = 0; i < 2; i ++ ) {
       whatever.sa.sa_family = family[i];
       try {
-	send_socket = new Socket( whatever, 0, 0, *ra_it, next_sock_id++ );
+	send_socket = new Socket( whatever, 0, 0, remote_addr.back(), next_sock_id++ );
 	socks.push_back( send_socket );
 	break;
       }  catch ( NetworkException & e ) {
