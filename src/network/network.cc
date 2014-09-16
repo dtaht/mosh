@@ -709,8 +709,8 @@ bool Connection::send_probe( Socket *sock, Addr &addr )
   ssize_t bytes_sent = sendto( sock->fd(), p.data(), p.size(), MSG_DONTWAIT,
 			       &addr.sa, addr.addrlen );
   if ( bytes_sent < 0 ) {
-    log_dbg( LOG_PERROR, "failed" );
     sock->SRTT += 1000;
+    log_dbg( LOG_PERROR, "failed (SRTT = %d)", (int)sock->SRTT );
   } else {
     log_dbg( LOG_DEBUG_COMMON, "success.\n" );
   }
@@ -732,8 +732,13 @@ void Connection::send( uint16_t flags, string s )
 
   if ( server ) {
     /* only send on the last heard socket. */
+    log_dbg( LOG_DEBUG_COMMON, "Sending data" );
     bytes_sent = sendto( send_socket->fd(), p.data(), p.size(), MSG_DONTWAIT,
 			 &send_socket->remote_addr.sa, send_socket->remote_addr.addrlen );
+    if ( bytes_sent >= 0 ) {
+      log_dbg( LOG_DEBUG_COMMON, ": done on %d (%s).\n",
+	       (int)send_socket->sock_id, send_socket->local_addr.tostring().c_str() );
+    }
   } else {
     std::sort( socks.begin(), socks.end(), Socket::srtt_order );
     log_dbg( LOG_DEBUG_COMMON, "Sending data" );
