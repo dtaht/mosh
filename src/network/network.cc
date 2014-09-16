@@ -709,8 +709,8 @@ bool Connection::send_probe( Socket *sock, Addr &addr )
   ssize_t bytes_sent = sendto( sock->fd(), p.data(), p.size(), MSG_DONTWAIT,
 			       &addr.sa, addr.addrlen );
   if ( bytes_sent < 0 ) {
-    send_socket->SRTT += 1000;
     log_dbg( LOG_PERROR, "failed" );
+    sock->SRTT += 1000;
   } else {
     log_dbg( LOG_DEBUG_COMMON, "success.\n" );
   }
