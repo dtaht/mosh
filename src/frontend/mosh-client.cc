@@ -103,16 +103,18 @@ int main( int argc, char *argv[] )
   /* Detect edge case */
   fatal_assert( argc > 0 );
 
-  printf("%d\n", getpid());
-  getchar();
-
   /* Get arguments */
   int opt;
-  while ( (opt = getopt( argc, argv, "c" )) != -1 ) {
+  while ( (opt = getopt( argc, argv, "cw" )) != -1 ) {
     switch ( opt ) {
     case 'c':
       print_colorcount();
       exit( 0 );
+      break;
+    case 'w':
+      /* print PID and wait for a keystroke, to let time for gdb-attaching. */
+      printf("%d\n", getpid());
+      getchar();
       break;
     default:
       usage( argv[ 0 ] );
