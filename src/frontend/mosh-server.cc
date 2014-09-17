@@ -96,7 +96,7 @@ void serve( int host_fd,
 
 int run_server( const char *desired_ip, const char *desired_port,
 		const string &command_path, char *command_argv[],
-		const int colors, bool verbose, bool with_motd );
+		const int colors, bool verbose, bool with_motd, bool detach );
 
 using namespace std;
 
@@ -168,6 +168,7 @@ int main( int argc, char *argv[] )
   bool verbose = false; /* don't close stdin/stdout/stderr */
   /* Will cause mosh-server not to correctly detach on old versions of sshd. */
   list<string> locale_vars;
+  bool detach = true;
 
   /* strip off command */
   for ( int i = 0; i < argc; i++ ) {
@@ -185,8 +186,10 @@ int main( int argc, char *argv[] )
        && (strcmp( argv[ 1 ], "new" ) == 0) ) {
     /* new option syntax */
     int opt;
-    while ( (opt = getopt( argc - 1, argv + 1, "i:p:c:svl:" )) != -1 ) {
+    while ( (opt = getopt( argc - 1, argv + 1, "ai:p:c:svl:" )) != -1 ) {
       switch ( opt ) {
+      case 'a':
+	detach = false;
       case 'i':
 	desired_ip = optarg;
 	break;
@@ -308,7 +311,7 @@ int main( int argc, char *argv[] )
   }
 
   try {
-    return run_server( desired_ip, desired_port, command_path, command_argv, colors, verbose, with_motd );
+    return run_server( desired_ip, desired_port, command_path, command_argv, colors, verbose, with_motd, detach );
   } catch ( const Network::NetworkException& e ) {
     fprintf( stderr, "Network exception: %s: %s\n",
 	     e.function.c_str(), strerror( e.the_errno ) );
@@ -322,7 +325,7 @@ int main( int argc, char *argv[] )
 
 int run_server( const char *desired_ip, const char *desired_port,
 		const string &command_path, char *command_argv[],
-		const int colors, bool verbose, bool with_motd ) {
+		const int colors, bool verbose, bool with_motd, bool detach ) {
   /* get initial window size */
   struct winsize window_size;
   if ( ioctl( STDIN_FILENO, TIOCGWINSZ, &window_size ) < 0 ||
@@ -361,11 +364,13 @@ int run_server( const char *desired_ip, const char *desired_port,
 
 
   /* detach from terminal */
-  pid_t the_pid = fork();
-  if ( the_pid < 0 ) {
-    perror( "fork" );
-  } else if ( the_pid > 0 ) {
-    _exit( 0 );
+  if ( detach ) {
+    pid_t the_pid = fork();
+    if ( the_pid < 0 ) {
+      perror( "fork" );
+    } else if ( the_pid > 0 ) {
+      _exit( 0 );
+    }
   }
 
   fprintf( stderr, "\nmosh-server (%s)\n", PACKAGE_STRING );
