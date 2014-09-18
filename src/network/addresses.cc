@@ -31,6 +31,7 @@
 */
 
 #include "addresses.h"
+#include "timestamp.h"
 
 extern "C" {
 #include "addr_lib/get_ip_addresses.h"
@@ -63,6 +64,7 @@ std::vector< Addr > Addresses::get_host_addresses( int *has_change )
   if ( changed ) {
       addresses = addr;
   }
+  last_addr_check = frozen_timestamp();
   return std::vector< Addr >( addr.begin(), addr.end() );;
 }
 

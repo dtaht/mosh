@@ -108,9 +108,11 @@ namespace Network {
   class Addresses {
   private:
     std::set< Addr > addresses;
+    uint64_t last_addr_check;
   public:
     std::vector< Addr > get_host_addresses( int *has_change );
     int get_fd( void ); /* to monitor things */
+    uint64_t last_check( void ) { return last_addr_check; }
   };
 }
 
