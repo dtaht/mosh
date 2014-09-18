@@ -121,6 +121,7 @@ namespace Network {
       int MTU;
       uint16_t saved_timestamp;
       uint64_t saved_timestamp_received_at;
+      uint64_t last_roundtrip_success;
       bool RTT_hit;
       double SRTT;
       double RTTVAR;
@@ -167,7 +168,6 @@ namespace Network {
 
     uint64_t last_heard;
     uint64_t last_port_choice;
-    uint64_t last_roundtrip_success; /* transport layer needs to tell us this */
     uint64_t last_addr_request;
 
     /* Exception from send(), to be delivered if the frontend asks for it,
@@ -214,8 +214,6 @@ namespace Network {
     {
       return have_send_exception ? &send_exception : NULL;
     }
-
-    void set_last_roundtrip_success( uint64_t s_success ) { last_roundtrip_success = s_success; }
 
     static bool parse_portrange( const char * desired_port_range, int & desired_port_low, int & desired_port_high );
   };

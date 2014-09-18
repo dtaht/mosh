@@ -182,7 +182,13 @@ void Connection::hop_port( void )
     while ( !socks.empty() ) {
       Socket *old_sock = socks.front();
       socks.pop_front();
-      old_socks.push_back( old_sock );
+      if ( now - old_sock->last_roundtrip_success < PORT_HOP_INTERVAL ) {
+	/* Don't hop port. */
+	new_socks.push_back( old_sock );
+	continue;
+      } else {
+	old_socks.push_back( old_sock );
+      }
 
       if ( send_socket == old_sock ) {
 	send_socket = NULL;
@@ -247,6 +253,7 @@ Connection::Socket::Socket( Socket *old ) /* For port hoping, client only. */
     MTU( old->MTU ),
     saved_timestamp( -1 ),
     saved_timestamp_received_at( 0 ),
+    last_roundtrip_success( -1 ),
     RTT_hit( false ),
     SRTT( old->SRTT ),
     RTTVAR( old->RTTVAR ),
@@ -263,6 +270,7 @@ Connection::Socket::Socket( Addr addr_to_bind, int lower_port, int higher_port, 
     MTU( DEFAULT_SEND_MTU ),
     saved_timestamp( -1 ),
     saved_timestamp_received_at( 0 ),
+    last_roundtrip_success( -1 ),
     RTT_hit( false ),
     SRTT( 1000 ),
     RTTVAR( 500 ),
@@ -428,7 +436,6 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
     expected_receiver_seq(),
     last_heard( -1 ),
     last_port_choice( -1 ),
-    last_roundtrip_success( -1 ),
     have_send_exception( false ),
     send_exception()
 {
@@ -506,7 +513,6 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
     expected_receiver_seq(),
     last_heard( -1 ),
     last_port_choice( -1 ),
-    last_roundtrip_success( -1 ),
     have_send_exception( false ),
     send_exception()
 {
@@ -790,8 +796,8 @@ void Connection::send( uint16_t flags, string s )
       fprintf( stderr, "Server now detached from client.\n" );
     }
   } else { /* client */
-    if ( ( ( now - last_port_choice > PORT_HOP_INTERVAL )
-	   && ( now - last_roundtrip_success > PORT_HOP_INTERVAL ) ) || rebind ) {
+    if ( now - last_port_choice > PORT_HOP_INTERVAL ) {
+      /* XXX shouldn't we hop port BEFORE sending ? */
       hop_port();
     }
   }
@@ -888,6 +894,8 @@ string Connection::recv_one( Socket *sock, bool nonblocking )
   if ( p.seq >= expected_receiver_seq[p.sock_id] ) { /* don't use out-of-order packets for timestamp or targeting */
     expected_receiver_seq[p.sock_id] = p.seq + 1; /* this is security-sensitive because a replay attack could otherwise
 						     screw up the timestamp and targeting */
+
+    sock->last_roundtrip_success = timestamp();
 
     if ( p.timestamp != uint16_t(-1) ) {
       sock->saved_timestamp = p.timestamp;
