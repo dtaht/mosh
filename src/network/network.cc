@@ -162,12 +162,12 @@ void Connection::hop_port( void )
     last_addr_request = now;
   }
 
-  int has_change = 0;
-  std::vector< Addr > addresses = host_addresses.get_host_addresses( &has_change );
+  int has_changed = 0;
+  std::vector< Addr > addresses = host_addresses.get_host_addresses( &has_changed );
   /* We should do something more clever: sorting Sockets by addresses, and then
      check which one can be rebound, and which one should be created.  For now,
      keep it "simple". */
-  if ( has_change || rebind ) {
+  if ( has_changed || rebind ) {
     rebind = false;
     while ( !socks.empty() ) {
       old_socks.push_back( socks.front() );
