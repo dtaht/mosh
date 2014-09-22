@@ -125,9 +125,6 @@ namespace Network {
       bool RTT_hit;
       double SRTT;
       double RTTVAR;
-      /* The message nonce should also have a Socket ID.  Otherwise, if a data
-         packet A is sent, and then a probe B, A will be discarded if B arrives
-         first.  Same for sending B then A: B is discarded. */
       uint64_t next_seq;
       uint16_t sock_id;
       Addr local_addr;
