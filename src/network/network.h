@@ -43,6 +43,7 @@
 #include <assert.h>
 
 #include "crypto.h"
+#include "addresses.h"
 
 using namespace Crypto;
 
@@ -84,13 +85,6 @@ namespace Network {
     string tostring( Session *session );
   };
 
-  union Addr {
-    struct sockaddr sa;
-    struct sockaddr_in sin;
-    struct sockaddr_in6 sin6;
-    struct sockaddr_storage ss;
-  };
-
   class Connection {
   private:
     static const int DEFAULT_SEND_MTU = 1300;
@@ -127,7 +121,6 @@ namespace Network {
     std::deque< Socket > socks;
     bool has_remote_addr;
     Addr remote_addr;
-    socklen_t remote_addr_len;
 
     bool server;
 
@@ -184,7 +177,7 @@ namespace Network {
     double get_SRTT( void ) const { return SRTT; }
 
     const Addr &get_remote_addr( void ) const { return remote_addr; }
-    socklen_t get_remote_addr_len( void ) const { return remote_addr_len; }
+    socklen_t get_remote_addr_len( void ) const { return remote_addr.addrlen; }
 
     const NetworkException *get_send_exception( void ) const
     {

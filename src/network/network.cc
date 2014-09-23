@@ -120,7 +120,8 @@ void Connection::hop_port( void )
   assert( !server );
 
   setup();
-  assert( remote_addr_len != 0 );
+
+  assert( remote_addr.addrlen != 0 );
   socks.push_back( Socket( remote_addr.sa.sa_family ) );
 
   prune_sockets();
@@ -220,7 +221,6 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
   : socks(),
     has_remote_addr( false ),
     remote_addr(),
-    remote_addr_len( 0 ),
     server( true ),
     MTU( DEFAULT_SEND_MTU ),
     key(),
@@ -340,7 +340,6 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
   : socks(),
     has_remote_addr( false ),
     remote_addr(),
-    remote_addr_len( 0 ),
     server( false ),
     MTU( DEFAULT_SEND_MTU ),
     key( key_str ),
@@ -369,8 +368,8 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
   hints.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV;
   AddrInfo ai( ip, port, &hints );
   fatal_assert( ai.res->ai_addrlen <= sizeof( remote_addr ) );
-  remote_addr_len = ai.res->ai_addrlen;
-  memcpy( &remote_addr.sa, ai.res->ai_addr, remote_addr_len );
+  remote_addr.addrlen = ai.res->ai_addrlen;
+  memcpy( &remote_addr.sa, ai.res->ai_addr, remote_addr.addrlen );
 
   has_remote_addr = true;
 
@@ -388,7 +387,7 @@ void Connection::send( string s )
   string p = px.tostring( &session );
 
   ssize_t bytes_sent = sendto( sock(), p.data(), p.size(), MSG_DONTWAIT,
-			       &remote_addr.sa, remote_addr_len );
+			       &remote_addr.sa, remote_addr.addrlen );
 
   if ( bytes_sent == static_cast<ssize_t>( p.size() ) ) {
     have_send_exception = false;
@@ -458,7 +457,7 @@ string Connection::recv_one( int sock_to_recv, bool nonblocking )
 
   /* receive source address */
   header.msg_name = &packet_remote_addr.sa;
-  header.msg_namelen = sizeof( packet_remote_addr );
+  header.msg_namelen = packet_remote_addr.addrlen;
 
   /* receive payload */
   msg_iovec.iov_base = msg_payload;
@@ -482,6 +481,8 @@ string Connection::recv_one( int sock_to_recv, bool nonblocking )
   if ( header.msg_flags & MSG_TRUNC ) {
     throw NetworkException( "Received oversize datagram", errno );
   }
+
+  packet_remote_addr.addrlen = header.msg_namelen;
 
   /* receive ECN */
   bool congestion_experienced = false;
@@ -545,12 +546,11 @@ string Connection::recv_one( int sock_to_recv, bool nonblocking )
     last_heard = timestamp();
 
     if ( server ) { /* only client can roam */
-      if ( remote_addr_len != header.msg_namelen ||
-	   memcmp( &remote_addr, &packet_remote_addr, remote_addr_len ) != 0 ) {
+      if ( (socklen_t)remote_addr.addrlen != header.msg_namelen ||
+	   memcmp( &remote_addr, &packet_remote_addr, remote_addr.addrlen ) != 0 ) {
 	remote_addr = packet_remote_addr;
-	remote_addr_len = header.msg_namelen;
 	char host[ NI_MAXHOST ], serv[ NI_MAXSERV ];
-	int errcode = getnameinfo( &remote_addr.sa, remote_addr_len,
+	int errcode = getnameinfo( &remote_addr.sa, remote_addr.addrlen,
 				   host, sizeof( host ), serv, sizeof( serv ),
 				   NI_DGRAM | NI_NUMERICHOST | NI_NUMERICSERV );
 	if ( errcode != 0 ) {
