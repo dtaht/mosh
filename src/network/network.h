@@ -43,6 +43,7 @@
 #include <assert.h>
 
 #include "crypto.h"
+#include "addresses.h"
 
 using namespace Crypto;
 
@@ -82,13 +83,6 @@ namespace Network {
     Packet( string coded_packet, Session *session );
     
     string tostring( Session *session );
-  };
-
-  union Addr {
-    struct sockaddr sa;
-    struct sockaddr_in sin;
-    struct sockaddr_in6 sin6;
-    struct sockaddr_storage ss;
   };
 
   class Connection {
