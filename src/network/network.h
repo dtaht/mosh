@@ -35,6 +35,7 @@
 
 #include <stdint.h>
 #include <deque>
+#include <map>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <string>
@@ -104,6 +105,38 @@ namespace Network {
 
     bool try_bind( const char *addr, int port_low, int port_high );
 
+    struct flow_key {
+      Addr src;
+      Addr dst;
+
+      flow_key( Addr s_src, Addr s_dst ) : src( s_src ), dst( s_dst ) {}
+
+      bool operator<( const struct flow_key &k ) const {
+	int cmp = src.compare( k.src );
+	if ( cmp != 0 ) {
+	  return cmp;
+	}
+	return dst < k.dst;
+      }
+    };
+
+    class Flow {
+    private:
+      static uint16_t next_flow_id;
+    public:
+      int MTU;
+      uint64_t next_seq;
+      uint64_t expected_receiver_seq;
+      uint16_t saved_timestamp;
+      uint64_t saved_timestamp_received_at;
+      bool RTT_hit;
+      double SRTT;
+      double RTTVAR;
+      uint16_t flow_id; /* TODO: will be used in the nonce to avoid out-of-order packets */
+
+      Flow( void );
+    };
+
     class Socket
     {
     private:
@@ -122,6 +155,8 @@ namespace Network {
     bool has_remote_addr;
     Addr remote_addr;
     socklen_t remote_addr_len;
+    std::map< struct flow_key, Flow* > flows;
+    Flow *last_flow;
 
     bool server;
 
