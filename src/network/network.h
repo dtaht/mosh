@@ -73,16 +73,21 @@ namespace Network {
     uint64_t seq;
     Direction direction;
     uint16_t timestamp, timestamp_reply;
+    uint16_t flow_id;
+    uint16_t flags;
     string payload;
     
     Packet( uint64_t s_seq, Direction s_direction,
-	    uint16_t s_timestamp, uint16_t s_timestamp_reply, string s_payload )
+	    uint16_t s_timestamp, uint16_t s_timestamp_reply,
+            uint16_t s_flow_id, uint16_t s_flags, string s_payload )
       : seq( s_seq ), direction( s_direction ),
-	timestamp( s_timestamp ), timestamp_reply( s_timestamp_reply ), payload( s_payload )
+	timestamp( s_timestamp ), timestamp_reply( s_timestamp_reply ),
+        flow_id( s_flow_id ), flags( s_flags ), payload( s_payload )
     {}
     
     Packet( string coded_packet, Session *session );
     
+    bool is_probe( void );
     string tostring( Session *session );
   };
 
@@ -139,7 +144,7 @@ namespace Network {
       bool RTT_hit;
       double SRTT;
       double RTTVAR;
-      uint16_t flow_id; /* TODO: will be used in the nonce to avoid out-of-order packets */
+      uint16_t flow_id;
 
       static bool srtt_order( std::pair< struct flow_key, Flow* > const &f1,
 			      std::pair< struct flow_key, Flow* > const &f2 ) {
@@ -187,7 +192,7 @@ namespace Network {
     bool have_send_exception;
     NetworkException send_exception;
 
-    Packet new_packet( Flow *flow, string &s_payload );
+    Packet new_packet( Flow *flow, uint16_t flags, string &s_payload );
 
     void hop_port( void );
 
