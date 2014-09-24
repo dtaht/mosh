@@ -123,7 +123,14 @@ namespace Network {
     class Flow {
     private:
       static uint16_t next_flow_id;
+      Flow( bool get_defaults )
+	: MTU( DEFAULT_SEND_MTU ), next_seq( 0 ),
+	expected_receiver_seq( 0 ), saved_timestamp( -1 ), saved_timestamp_received_at( 0 ),
+	RTT_hit( false ), SRTT( 1000 ), RTTVAR( 500 ), flow_id( 0 )
+      {}
+
     public:
+      static const Flow defaults; /* for default values only */
       int MTU;
       uint64_t next_seq;
       uint64_t expected_receiver_seq;
@@ -164,33 +171,23 @@ namespace Network {
 
     bool server;
 
-    int MTU;
-
     Base64Key key;
     Session session;
 
     void setup( void );
 
     Direction direction;
-    uint64_t next_seq;
-    uint16_t saved_timestamp;
-    uint64_t saved_timestamp_received_at;
-    uint64_t expected_receiver_seq;
 
     uint64_t last_heard;
     uint64_t last_port_choice;
     uint64_t last_roundtrip_success; /* transport layer needs to tell us this */
-
-    bool RTT_hit;
-    double SRTT;
-    double RTTVAR;
 
     /* Exception from send(), to be delivered if the frontend asks for it,
        without altering control flow. */
     bool have_send_exception;
     NetworkException send_exception;
 
-    Packet new_packet( string &s_payload );
+    Packet new_packet( Flow *flow, string &s_payload );
 
     void hop_port( void );
 
@@ -207,14 +204,14 @@ namespace Network {
     void send( string s );
     string recv( void );
     const std::vector< int > fds( void ) const;
-    int get_MTU( void ) const { return MTU; }
+    int get_MTU( void ) const { return last_flow ? last_flow->MTU : DEFAULT_SEND_MTU; }
 
     std::string port( void ) const;
     string get_key( void ) const { return key.printable_key(); }
     bool get_has_remote_addr( void ) const { return has_remote_addr; }
 
     uint64_t timeout( void ) const;
-    double get_SRTT( void ) const { return SRTT; }
+    double get_SRTT( void ) const { return last_flow ? last_flow->SRTT : 1000; }
 
     const Addr &get_remote_addr( void ) const { return remote_addr; }
     socklen_t get_remote_addr_len( void ) const { return remote_addr.addrlen; }

@@ -97,20 +97,20 @@ string Packet::tostring( Session *session )
   return session->encrypt( Message( Nonce( direction_seq ), timestamps + payload ) );
 }
 
-Packet Connection::new_packet( string &s_payload )
+Packet Connection::new_packet( Flow *flow, string &s_payload )
 {
   uint16_t outgoing_timestamp_reply = -1;
 
   uint64_t now = timestamp();
 
-  if ( now - saved_timestamp_received_at < 1000 ) { /* we have a recent received timestamp */
+  if ( now - flow->saved_timestamp_received_at < 1000 ) { /* we have a recent received timestamp */
     /* send "corrected" timestamp advanced by how long we held it */
-    outgoing_timestamp_reply = saved_timestamp + (now - saved_timestamp_received_at);
-    saved_timestamp = -1;
-    saved_timestamp_received_at = 0;
+    outgoing_timestamp_reply = flow->saved_timestamp + (now - flow->saved_timestamp_received_at);
+    flow->saved_timestamp = -1;
+    flow->saved_timestamp_received_at = 0;
   }
 
-  Packet p( next_seq++, direction, timestamp16(), outgoing_timestamp_reply, s_payload );
+  Packet p( flow->next_seq++, direction, timestamp16(), outgoing_timestamp_reply, s_payload );
 
   return p;
 }
@@ -147,6 +147,26 @@ void Connection::prune_sockets( void )
     for ( int i = 0; i < num_to_kill; i++ ) {
       socks.pop_front();
     }
+  }
+}
+
+uint16_t Connection::Flow::next_flow_id = 0;
+const Connection::Flow Connection::Flow::defaults = Flow( true );
+
+Connection::Flow::Flow( void )
+  : MTU( defaults.MTU ),
+    next_seq( defaults.next_seq ),
+    expected_receiver_seq( defaults.expected_receiver_seq ),
+    saved_timestamp( defaults.saved_timestamp ),
+    saved_timestamp_received_at( defaults.saved_timestamp_received_at ),
+    RTT_hit( defaults.RTT_hit ),
+    SRTT( defaults.SRTT ),
+    RTTVAR( defaults.RTTVAR ),
+    flow_id( next_flow_id++ )
+{
+  if ( flow_id == 0xFFFF ) {
+    fprintf( stderr, "Max flow ID reached, exit before nonce be corrupted\n." );
+    throw;
   }
 }
 
@@ -224,20 +244,12 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
     flows(),
     last_flow( NULL ),
     server( true ),
-    MTU( DEFAULT_SEND_MTU ),
     key(),
     session( key ),
     direction( TO_CLIENT ),
-    next_seq( 0 ),
-    saved_timestamp( -1 ),
-    saved_timestamp_received_at( 0 ),
-    expected_receiver_seq( 0 ),
     last_heard( -1 ),
     last_port_choice( -1 ),
     last_roundtrip_success( -1 ),
-    RTT_hit( false ),
-    SRTT( 1000 ),
-    RTTVAR( 500 ),
     have_send_exception( false ),
     send_exception()
 {
@@ -345,20 +357,12 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
     flows(),
     last_flow( NULL ),
     server( false ),
-    MTU( DEFAULT_SEND_MTU ),
     key( key_str ),
     session( key ),
     direction( TO_SERVER ),
-    next_seq( 0 ),
-    saved_timestamp( -1 ),
-    saved_timestamp_received_at( 0 ),
-    expected_receiver_seq( 0 ),
     last_heard( -1 ),
     last_port_choice( -1 ),
     last_roundtrip_success( -1 ),
-    RTT_hit( false ),
-    SRTT( 1000 ),
-    RTTVAR( 500 ),
     have_send_exception( false ),
     send_exception()
 {
@@ -377,6 +381,10 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
 
   has_remote_addr = true;
 
+  struct flow_key tmp( Addr(), remote_addr );
+  last_flow = new Flow();
+  flows[ tmp ] = last_flow;
+
   socks.push_back( Socket( remote_addr.sa.sa_family ) );
 }
 
@@ -386,7 +394,7 @@ void Connection::send( string s )
     return;
   }
 
-  Packet px = new_packet( s );
+  Packet px = new_packet( last_flow, s );
 
   string p = px.tostring( &session );
 
@@ -403,7 +411,7 @@ void Connection::send( string s )
     send_exception = NetworkException( "sendto", errno );
 
     if ( errno == EMSGSIZE ) {
-      MTU = 500; /* payload MTU of last resort */
+      last_flow->MTU = 500; /* payload MTU of last resort */
     }
   }
 
@@ -508,18 +516,18 @@ string Connection::recv_one( int sock_to_recv, bool nonblocking )
 
   dos_assert( p.direction == (server ? TO_SERVER : TO_CLIENT) ); /* prevent malicious playback to sender */
 
-  if ( p.seq >= expected_receiver_seq ) { /* don't use out-of-order packets for timestamp or targeting */
-    expected_receiver_seq = p.seq + 1; /* this is security-sensitive because a replay attack could otherwise
-					  screw up the timestamp and targeting */
+  if ( p.seq >= last_flow->expected_receiver_seq ) { /* don't use out-of-order packets for timestamp or targeting */
+    last_flow->expected_receiver_seq = p.seq + 1; /* this is security-sensitive because a replay attack could otherwise
+						     screw up the timestamp and targeting */
 
     if ( p.timestamp != uint16_t(-1) ) {
-      saved_timestamp = p.timestamp;
-      saved_timestamp_received_at = timestamp();
+      last_flow->saved_timestamp = p.timestamp;
+      last_flow->saved_timestamp_received_at = timestamp();
 
       if ( congestion_experienced ) {
 	/* signal counterparty to slow down */
 	/* this will gradually slow the counterparty down to the minimum frame rate */
-	saved_timestamp -= CONGESTION_TIMESTAMP_PENALTY;
+	last_flow->saved_timestamp -= CONGESTION_TIMESTAMP_PENALTY;
 	if ( server ) {
 	  fprintf( stderr, "Received explicit congestion notification.\n" );
 	}
@@ -531,16 +539,16 @@ string Connection::recv_one( int sock_to_recv, bool nonblocking )
       double R = timestamp_diff( now, p.timestamp_reply );
 
       if ( R < 5000 ) { /* ignore large values, e.g. server was Ctrl-Zed */
-	if ( !RTT_hit ) { /* first measurement */
-	  SRTT = R;
-	  RTTVAR = R / 2;
-	  RTT_hit = true;
+	if ( !last_flow->RTT_hit ) { /* first measurement */
+	  last_flow->SRTT = R;
+	  last_flow->RTTVAR = R / 2;
+	  last_flow->RTT_hit = true;
 	} else {
 	  const double alpha = 1.0 / 8.0;
 	  const double beta = 1.0 / 4.0;
 	  
-	  RTTVAR = (1 - beta) * RTTVAR + ( beta * fabs( SRTT - R ) );
-	  SRTT = (1 - alpha) * SRTT + ( alpha * R );
+	  last_flow->RTTVAR = (1 - beta) * last_flow->RTTVAR + ( beta * fabs( last_flow->SRTT - R ) );
+	  last_flow->SRTT = (1 - alpha) * last_flow->SRTT + ( alpha * R );
 	}
       }
     }
@@ -618,7 +626,8 @@ uint16_t Network::timestamp_diff( uint16_t tsnew, uint16_t tsold )
 
 uint64_t Connection::timeout( void ) const
 {
-  uint64_t RTO = lrint( ceil( SRTT + 4 * RTTVAR ) );
+  const Flow *flow = last_flow ? last_flow : &Flow::defaults;
+  uint64_t RTO = lrint( ceil( flow->SRTT + 4 * flow->RTTVAR ) );
   if ( RTO < MIN_RTO ) {
     RTO = MIN_RTO;
   } else if ( RTO > MAX_RTO ) {
