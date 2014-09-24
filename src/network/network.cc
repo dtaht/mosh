@@ -30,6 +30,8 @@
     also delete it here.
 */
 
+#define __APPLE_USE_RFC_3542
+
 #include "config.h"
 extern "C" {
 #include "util.h"
@@ -214,6 +216,11 @@ Connection::Socket::Socket( void )
   /* request explicit congestion notification on received datagrams */
   if ( setsockopt( _fd, IPPROTO_IPV6, IPV6_RECVTCLASS, &on, sizeof( on ) ) < 0 ) {
     perror( "setsockopt( IPV6_RECVTCLASS on )" );
+  }
+
+  /* Tell me on which address the msg has been received. */
+  if ( setsockopt( _fd, IPPROTO_IPV6, IPV6_RECVPKTINFO, &on, sizeof( on ) ) ) {
+    perror( "setsockopt( IPV6_RECVPKTINFO on )" );
   }
 }
 
@@ -485,6 +492,7 @@ string Connection::recv_one( int sock_to_recv, bool nonblocking )
 {
   /* receive source address, ECN, and payload in msghdr structure */
   Addr packet_remote_addr;
+  Addr packet_local_addr;
   struct msghdr header;
   struct iovec msg_iovec;
 
@@ -518,19 +526,30 @@ string Connection::recv_one( int sock_to_recv, bool nonblocking )
     throw NetworkException( "Received oversize datagram", errno );
   }
 
-  /* receive ECN */
+  /* receive ECN and local address targeted by the packet */
   bool congestion_experienced = false;
 
-  struct cmsghdr *ecn_hdr = CMSG_FIRSTHDR( &header );
-  if ( ecn_hdr
-       && (ecn_hdr->cmsg_level == IPPROTO_IP)
-       && (ecn_hdr->cmsg_type == IP_TOS) ) {
-    /* got one */
-    uint8_t *ecn_octet_p = (uint8_t *)CMSG_DATA( ecn_hdr );
-    assert( ecn_octet_p );
+  struct cmsghdr *cmsghdr;
+  for ( cmsghdr = CMSG_FIRSTHDR( &header ); cmsghdr != NULL; cmsghdr = CMSG_NXTHDR( &header, cmsghdr ) ) {
+    if ( (cmsghdr->cmsg_level == IPPROTO_IP)
+	 && (cmsghdr->cmsg_type == IP_TOS) ) {
+      uint8_t *ecn_octet_p = (uint8_t *)CMSG_DATA( cmsghdr );
+      assert( ecn_octet_p );
 
-    if ( (*ecn_octet_p & 0x03) == 0x03 ) {
-      congestion_experienced = true;
+      if ( (*ecn_octet_p & 0x03) == 0x03 ) {
+	congestion_experienced = true;
+      }
+
+    } else if ( cmsghdr->cmsg_level == IPPROTO_IPV6 ) {
+      if ( cmsghdr->cmsg_type == IPV6_PKTINFO ) {
+	struct in6_pktinfo *info = (struct in6_pktinfo *)CMSG_DATA( cmsghdr );
+	memcpy( &packet_local_addr.sin6, &info->ipi6_addr, sizeof( struct in6_addr ) );
+      } else if ( cmsghdr->cmsg_type == IPV6_TCLASS ) {
+	uint8_t tclass = *(uint8_t *)CMSG_DATA( cmsghdr );
+	if ( (tclass & 0x03) == 0x03 ) {
+	  congestion_experienced = true;
+	}
+      }
     }
   }
 
