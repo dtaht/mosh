@@ -31,6 +31,9 @@
 */
 
 #include "config.h"
+extern "C" {
+#include "util.h"
+}
 
 #include <sys/types.h>
 #include <sys/socket.h>
