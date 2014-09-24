@@ -62,8 +62,14 @@ using namespace std;
 using namespace Network;
 using namespace Crypto;
 
-const uint64_t DIRECTION_MASK = uint64_t(1) << 63;
-const uint64_t SEQUENCE_MASK = uint64_t(-1) ^ DIRECTION_MASK;
+const uint64_t DIRECTION_MASK = 0x8000000000000000;
+const uint64_t FLOWID_MASK    = 0x7FFF000000000000;
+const uint64_t SEQUENCE_MASK  = 0x0000FFFFFFFFFFFF;
+#define TO_DIRECTION(d) (uint64_t( (d) == TO_CLIENT ) << 63)
+#define TO_FLOWID(id) (uint64_t( id ) << 48)
+#define GET_DIRECTION(nonce) ( ((nonce) & DIRECTION_MASK) ? TO_CLIENT : TO_SERVER )
+#define GET_FLOWID(nonce) ( uint16_t( ( (nonce) & FLOWID_MASK ) >> 48 ) )
+const uint16_t PROBE_FLAG = 1 << 0;
 
 /* Read in packet from coded string */
 Packet::Packet( string coded_packet, Session *session )
@@ -75,32 +81,41 @@ Packet::Packet( string coded_packet, Session *session )
 {
   Message message = session->decrypt( coded_packet );
 
-  direction = (message.nonce.val() & DIRECTION_MASK) ? TO_CLIENT : TO_SERVER;
+  direction = GET_DIRECTION( message.nonce.val() );
+  flow_id = GET_FLOWID( message.nonce.val() );
   seq = message.nonce.val() & SEQUENCE_MASK;
 
-  dos_assert( message.text.size() >= 2 * sizeof( uint16_t ) );
+  dos_assert( message.text.size() >= 3 * sizeof( uint16_t ) );
 
   uint16_t *data = (uint16_t *)message.text.data();
   timestamp = be16toh( data[ 0 ] );
   timestamp_reply = be16toh( data[ 1 ] );
+  flags = be16toh( data[2] );
 
-  payload = string( message.text.begin() + 2 * sizeof( uint16_t ), message.text.end() );
+  payload = string( message.text.begin() + 3 * sizeof( uint16_t ), message.text.end() );
+}
+
+bool Packet::is_probe( void )
+{
+  return flags & PROBE_FLAG;
 }
 
 /* Output coded string from packet */
 string Packet::tostring( Session *session )
 {
-  uint64_t direction_seq = (uint64_t( direction == TO_CLIENT ) << 63) | (seq & SEQUENCE_MASK);
+  uint64_t direction_id_seq = TO_DIRECTION( direction ) | TO_FLOWID( flow_id ) | (seq & SEQUENCE_MASK);
 
   uint16_t ts_net[ 2 ] = { static_cast<uint16_t>( htobe16( timestamp ) ),
                            static_cast<uint16_t>( htobe16( timestamp_reply ) ) };
+  uint16_t flags_net = static_cast<uint16_t>( htobe16( flags ) );
 
   string timestamps = string( (char *)ts_net, 2 * sizeof( uint16_t ) );
+  string flags_string = string( (char *)&flags_net, sizeof( uint16_t ) );
 
-  return session->encrypt( Message( Nonce( direction_seq ), timestamps + payload ) );
+  return session->encrypt( Message( Nonce( direction_id_seq ), timestamps + flags_string + payload ) );
 }
 
-Packet Connection::new_packet( Flow *flow, string &s_payload )
+Packet Connection::new_packet( Flow *flow, uint16_t flags, string &s_payload )
 {
   uint16_t outgoing_timestamp_reply = -1;
 
@@ -113,7 +128,8 @@ Packet Connection::new_packet( Flow *flow, string &s_payload )
     flow->saved_timestamp_received_at = 0;
   }
 
-  Packet p( flow->next_seq++, direction, timestamp16(), outgoing_timestamp_reply, s_payload );
+  Packet p( flow->next_seq++, direction, timestamp16(), outgoing_timestamp_reply,
+	    flow->flow_id, flags, s_payload );
 
   return p;
 }
@@ -397,7 +413,7 @@ void Connection::send( string s )
     return;
   }
 
-  Packet px = new_packet( last_flow, s );
+  Packet px = new_packet( last_flow, 0, s );
 
   string p = px.tostring( &session );
 
