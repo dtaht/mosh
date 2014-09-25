@@ -434,11 +434,11 @@ ssize_t Connection::sendfromto( int sock, const char *buffer, size_t size, int f
   struct msghdr msghdr;
   struct cmsghdr *cmsghdr;
   struct in6_pktinfo *info;
-  struct iovec iov = {
-    .iov_base = (void*) buffer,
-    .iov_len = size
-  };
+  struct iovec iov;
   char cmsg[256];
+
+  iov.iov_base = (void*) buffer;
+  iov.iov_len = size;
 
   memset( &msghdr, 0, sizeof( msghdr ) );
   msghdr.msg_iov = &iov;
