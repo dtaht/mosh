@@ -422,9 +422,15 @@ bool Connection::send_probe( const struct flow_key &flow_key, Flow *flow )
 
   string p = px.tostring( &session );
 
+  log_dbg( LOG_DEBUG_COMMON, "Sending probe: %s -> %s: ",
+           flow_key.src.tostring().c_str(), flow_key.dst.tostring().c_str() );
+
   ssize_t bytes_sent = sendfromto( sock(), p.data(), p.size(), MSG_DONTWAIT, flow_key.src, flow_key.dst );
   if ( bytes_sent < 0 ) {
     flow->SRTT = MIN( flow->SRTT + 1000, 10000);
+    log_dbg( LOG_PERROR, "failed (SRTT = %dms)", (int)flow->SRTT );
+  } else {
+    log_dbg( LOG_DEBUG_COMMON, "success.\n" );
   }
 
   return ( bytes_sent != static_cast<ssize_t>( p.size() ) );
@@ -472,6 +478,7 @@ void Connection::send( string s )
 
   have_send_exception = true;
 
+  log_dbg( LOG_DEBUG_COMMON, "Sending data" );
   ssize_t bytes_sent = -1;
   if ( server ) {
     Packet px = new_packet( last_flow, 0, s );
@@ -481,22 +488,29 @@ void Connection::send( string s )
     bytes_sent = sendfromto( sock(), p.data(), p.size(), MSG_DONTWAIT, last_flow_key.src, last_flow_key.dst );
     if ( bytes_sent == static_cast<ssize_t>( p.size() ) ) {
       have_send_exception = false;
+      log_dbg( LOG_DEBUG_COMMON, ": done (%s -> %s).\n",
+	       last_flow_key.src.tostring().c_str(), last_flow_key.dst.tostring().c_str() );
     }
 
   } else if ( UNLIKELY( last_flow == NULL ) ) { /* First send. */
+    log_dbg( LOG_DEBUG_COMMON, " to all our addresses (first send):\n");
     for ( std::map< struct flow_key, Flow* >::iterator it = flows.begin();
 	  it != flows.end();
 	  it++ ) {
       Packet px = new_packet( it->second, 0, s );
       string p = px.tostring( &session );
+      log_dbg( LOG_DEBUG_COMMON, "    %s -> %s ",
+	       it->first.src.tostring().c_str(), it->first.dst.tostring().c_str() );
       bytes_sent = sendfromto( sock(), p.data(), p.size(), MSG_DONTWAIT, it->first.src, it->first.dst );
       if ( bytes_sent < 0 ) {
 	it->second->SRTT = MIN( it->second->SRTT + 1000, 10000);
 	if ( errno == EMSGSIZE ) {
 	  it->second->MTU = 500; /* payload MTU of last resort */
 	}
+ 	log_dbg( LOG_PERROR, "(failed (SRTT = %dms))", (int)it->second->SRTT );
       } else if ( bytes_sent == static_cast<ssize_t>( p.size() ) ) {
 	have_send_exception = false;
+	log_dbg( LOG_DEBUG_COMMON, "(success).\n" );
 	last_flow_key = it->first;
 	last_flow = it->second;
       }
@@ -519,8 +533,13 @@ void Connection::send( string s )
       } else if ( bytes_sent == static_cast<ssize_t>( p.size() ) ){
 	have_send_exception = false;
 	if ( last_flow != it->second ) {
+	  log_dbg( LOG_DEBUG_COMMON, ": done by switching to (%s -> %s, SRTT = %dms) [was (%s -> %s, SRTT = %dms)].\n",
+		   it->first.src.tostring().c_str(), it->first.dst.tostring().c_str(), (int)it->second->SRTT,
+		   last_flow_key.src.tostring().c_str(), last_flow_key.dst.tostring().c_str(), (int)last_flow->SRTT );
 	  last_flow_key = it->first;
 	  last_flow = it->second;
+	} else {
+	  log_dbg( LOG_DEBUG_COMMON, ": success (SRTT = %dms).\n", (int)it->second->SRTT );
 	}
 	break;
       }
@@ -530,6 +549,7 @@ void Connection::send( string s )
   }
 
   if ( have_send_exception ) {
+    log_dbg( LOG_PERROR, " failed" );
     /* Notify the frontend on sendmsg() failure, but don't alter control flow.
        sendmsg() success is not very meaningful because packets can be lost in
        flight anyway. */
@@ -647,6 +667,8 @@ string Connection::recv_one( int sock_to_recv, bool nonblocking )
   packet_remote_addr.addrlen = header.msg_namelen;
   struct flow_key flow_key( packet_local_addr, packet_remote_addr );
   Flow *flow_info = flows[ flow_key ];
+  log_dbg( LOG_DEBUG_COMMON, "Message received on %sflow (%s <- %s): ", flow_info ? "" : "new ",
+	   packet_local_addr.tostring().c_str(), packet_remote_addr.tostring().c_str() );
   if ( !flow_info ) {
     flow_info = new Flow();
     flows[ flow_key ] = flow_info;
@@ -674,6 +696,12 @@ string Connection::recv_one( int sock_to_recv, bool nonblocking )
       }
     }
 
+    if ( p.is_probe() ) {
+      log_dbg( LOG_DEBUG_COMMON, "probe, " );
+    } else {
+      log_dbg( LOG_DEBUG_COMMON, "data, " );
+    }
+
     if ( p.timestamp_reply != uint16_t(-1) ) {
       uint16_t now = timestamp16();
       double R = timestamp_diff( now, p.timestamp_reply );
@@ -691,6 +719,9 @@ string Connection::recv_one( int sock_to_recv, bool nonblocking )
 	  flow_info->SRTT = (1 - alpha) * flow_info->SRTT + ( alpha * R );
 	}
       }
+      log_dbg( LOG_DEBUG_COMMON, "RTT = %ums, SRTT = %ums.\n", (unsigned int)R, (unsigned int)flow_info->SRTT );
+    } else {
+      log_dbg( LOG_DEBUG_COMMON, "no timestamp reply.\n" );
     }
 
     /* auto-adjust to remote host */
