@@ -119,7 +119,7 @@ namespace Network {
       bool operator<( const struct flow_key &k ) const {
 	int cmp = src.compare( k.src );
 	if ( cmp != 0 ) {
-	  return cmp;
+	  return cmp < 0;
 	}
 	return dst < k.dst;
       }
