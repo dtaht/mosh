@@ -397,9 +397,9 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
     }
   }
 
-  send_probes(); /* This should check all flows. */
-
   socks.push_back( Socket() );
+
+  send_probes(); /* This should check all flows. */
 }
 
 void Connection::send_probes( void )
