@@ -65,6 +65,7 @@ namespace Network {
       default:        addrlen = sizeof( ss );   break;
       }
       memset( &ss, 0, addrlen );
+      sa.sa_family = family;
     }
     Addr( struct sockaddr &s ) {
       switch ( s.sa_family ) {
