@@ -488,8 +488,7 @@ void Connection::send( string s )
       bytes_sent = sendfromto( sock(), p.data(), p.size(), MSG_DONTWAIT, it->first.src, it->first.dst );
       if ( bytes_sent < 0 ) {
 	it->second->SRTT = MIN( it->second->SRTT + 1000, 10000);
-	continue;
-      } else {
+      } else if ( bytes_sent == static_cast<ssize_t>( p.size() ) ) {
 	last_flow_key = it->first;
 	last_flow = it->second;
       }
