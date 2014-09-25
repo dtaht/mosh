@@ -205,15 +205,6 @@ Connection::Socket::Socket( void )
     throw NetworkException( "setsockopt( IPV6_V6ONLY off )", errno );
   }
 
-#ifdef HAVE_IPV6_MTU_DISCOVER
-  /* Disable path MTU discovery */
-  char flag = IPV6_PMTUDISC_DONT;
-  socklen_t optlen = sizeof( flag );
-  if ( setsockopt( _fd, IPPROTO_IPV6, IPV6_MTU_DISCOVER, &flag, optlen ) < 0 ) {
-    throw NetworkException( "setsockopt( MTU_DISCOVER don't )", errno );
-  }
-#endif
-
   /* request explicit congestion notification on received datagrams */
   if ( setsockopt( _fd, IPPROTO_IPV6, IPV6_RECVTCLASS, &on, sizeof( on ) ) < 0 ) {
     perror( "setsockopt( IPV6_RECVTCLASS on )" );
