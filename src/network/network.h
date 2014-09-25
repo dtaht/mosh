@@ -172,6 +172,7 @@ namespace Network {
     bool has_remote_addr;
     Addr remote_addr;
     std::map< struct flow_key, Flow* > flows;
+    struct flow_key last_flow_key;
     Flow *last_flow;
 
     bool server;
