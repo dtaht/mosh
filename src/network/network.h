@@ -159,7 +159,6 @@ namespace Network {
     std::deque< Socket > socks;
     bool has_remote_addr;
     Addr remote_addr;
-    socklen_t remote_addr_len;
     std::map< struct flow_key, Flow* > flows;
     struct flow_key last_flow_key;
     Flow *last_flow;
@@ -212,7 +211,7 @@ namespace Network {
     double get_SRTT( void ) const { return last_flow ? last_flow->SRTT : 1000; }
 
     const Addr &get_remote_addr( void ) const { return remote_addr; }
-    socklen_t get_remote_addr_len( void ) const { return remote_addr_len; }
+    socklen_t get_remote_addr_len( void ) const { return remote_addr.addrlen; }
 
     const NetworkException *get_send_exception( void ) const
     {
