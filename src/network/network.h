@@ -190,7 +190,7 @@ namespace Network {
     void prune_sockets( void );
 
     void send_probes( void );
-    bool send_probe( std::pair< const struct flow_key, Flow * > &flow );
+    bool send_probe( const struct flow_key &flow_key, Flow *flow );
     ssize_t sendfromto( int sock, const char *buffer, size_t size, int flags, const Addr &from, const Addr &to );
     string recv_one( int sock_to_recv, bool nonblocking );
 

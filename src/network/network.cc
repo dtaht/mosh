@@ -402,22 +402,21 @@ void Connection::send_probes( void )
 	it != flows.end();
 	it++ ) {
     if ( it->second != last_flow ) {
-      send_probe( *it );
+      send_probe( it->first, it->second );
     }
   }
 }
 
-bool Connection::send_probe( std::pair< const struct flow_key, Flow * > &flow )
+bool Connection::send_probe( const struct flow_key &flow_key, Flow *flow )
 {
-  Flow *flow_info = flow.second;
   string empty("");
-  Packet px = new_packet( flow_info, PROBE_FLAG, empty );
+  Packet px = new_packet( flow, PROBE_FLAG, empty );
 
   string p = px.tostring( &session );
 
-  ssize_t bytes_sent = sendfromto( sock(), p.data(), p.size(), MSG_DONTWAIT, flow.first.src, flow.first.dst );
+  ssize_t bytes_sent = sendfromto( sock(), p.data(), p.size(), MSG_DONTWAIT, flow_key.src, flow_key.dst );
   if ( bytes_sent < 0 ) {
-    flow_info->SRTT += 1000;
+    flow->SRTT += 1000;
   }
 
   return ( bytes_sent != static_cast<ssize_t>( p.size() ) );
