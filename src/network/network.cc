@@ -391,7 +391,7 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
 	if ( !flow_info ) { /* should be always true at this point. */
 	  flow_info = new Flow();
 	  flows[ flow_key ] = flow_info;
-	  assert( flows[ flow_key ] != flow_info );
+	  assert( flows[ flow_key ] == flow_info );
 	}
       }
     }
