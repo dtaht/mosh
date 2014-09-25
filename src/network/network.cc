@@ -469,18 +469,22 @@ void Connection::send( string s )
     return;
   }
 
-  Packet px = new_packet( last_flow, 0, s );
+  have_send_exception = true;
 
-  string p = px.tostring( &session );
   ssize_t bytes_sent = -1;
-
   if ( server ) {
+    Packet px = new_packet( last_flow, 0, s );
+
+    string p = px.tostring( &session );
+
     bytes_sent = sendfromto( sock(), p.data(), p.size(), MSG_DONTWAIT, last_flow_key.src, last_flow_key.dst );
 
   } else if ( last_flow == NULL ) { /* First send. */
     for ( std::map< struct flow_key, Flow* >::iterator it = flows.begin();
 	  it != flows.end();
 	  it++ ) {
+      Packet px = new_packet( it->second, 0, s );
+      string p = px.tostring( &session );
       bytes_sent = sendfromto( sock(), p.data(), p.size(), MSG_DONTWAIT, it->first.src, it->first.dst );
       if ( bytes_sent < 0 ) {
 	continue;
@@ -496,11 +500,15 @@ void Connection::send( string s )
     for ( std::vector< std::pair< struct flow_key, Flow* > >::const_iterator it = flows_vect.begin();
 	  it != flows_vect.end();
 	  it ++ ) {
+      Packet px = new_packet( it->second, 0, s );
+      string p = px.tostring( &session );
       bytes_sent = sendfromto( sock(), p.data(), p.size(), MSG_DONTWAIT, it->first.src, it->first.dst );
       if ( bytes_sent < 0 ) {
 	it->second->SRTT = MIN( it->second->SRTT + 1000, 10000);
-      } else {
+      } else if ( bytes_sent == static_cast<ssize_t>( p.size() ) ){
+	have_send_exception = false;
 	if ( last_flow != it->second ) {
+	  last_flow_key = it->first;
 	  last_flow = it->second;
 	}
 	break;
@@ -510,14 +518,11 @@ void Connection::send( string s )
     send_probes();
   }
 
-  if ( bytes_sent == static_cast<ssize_t>( p.size() ) ) {
-    have_send_exception = false;
-  } else {
-    /* Notify the frontend on sendto() failure, but don't alter control flow.
-       sendto() success is not very meaningful because packets can be lost in
+  if ( have_send_exception ) {
+    /* Notify the frontend on sendmsg() failure, but don't alter control flow.
+       sendmsg() success is not very meaningful because packets can be lost in
        flight anyway. */
-    have_send_exception = true;
-    send_exception = NetworkException( "sendto", errno );
+    send_exception = NetworkException( "sendmsg", errno );
 
     if ( errno == EMSGSIZE ) {
       last_flow->MTU = 500; /* payload MTU of last resort */
