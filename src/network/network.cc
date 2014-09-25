@@ -487,6 +487,7 @@ void Connection::send( string s )
       string p = px.tostring( &session );
       bytes_sent = sendfromto( sock(), p.data(), p.size(), MSG_DONTWAIT, it->first.src, it->first.dst );
       if ( bytes_sent < 0 ) {
+	it->second->SRTT = MIN( it->second->SRTT + 1000, 10000);
 	continue;
       } else {
 	last_flow_key = it->first;
