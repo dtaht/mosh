@@ -423,7 +423,7 @@ bool Connection::send_probe( const struct flow_key &flow_key, Flow *flow )
 
   ssize_t bytes_sent = sendfromto( sock(), p.data(), p.size(), MSG_DONTWAIT, flow_key.src, flow_key.dst );
   if ( bytes_sent < 0 ) {
-    flow->SRTT += 1000;
+    flow->SRTT = MIN( flow->SRTT + 1000, 10000);
   }
 
   return ( bytes_sent != static_cast<ssize_t>( p.size() ) );
