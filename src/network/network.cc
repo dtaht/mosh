@@ -30,6 +30,8 @@
     also delete it here.
 */
 
+#define __APPLE_USE_RFC_3542
+
 #include "config.h"
 extern "C" {
 #include "util.h"
@@ -217,6 +219,11 @@ Connection::Socket::Socket( void )
   if ( setsockopt( _fd, IPPROTO_IPV6, IPV6_RECVTCLASS, &on, sizeof( on ) ) < 0 ) {
     perror( "setsockopt( IPV6_RECVTCLASS on )" );
   }
+
+  /* Tell me on which address the msg has been received. */
+  if ( setsockopt( _fd, IPPROTO_IPV6, IPV6_RECVPKTINFO, &on, sizeof( on ) ) ) {
+    perror( "setsockopt( IPV6_RECVPKTINFO on )" );
+  }
 }
 
 void Connection::setup( void )
@@ -388,6 +395,40 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
   socks.push_back( Socket() );
 }
 
+ssize_t Connection::sendfromto( int sock, const char *buffer, size_t size, int flags, const Addr &from, const Addr &to )
+{
+  struct msghdr msghdr;
+  struct cmsghdr *cmsghdr;
+  struct in6_pktinfo *info;
+  struct iovec iov;
+  char cmsg[256];
+
+  iov.iov_base = (void*) buffer;
+  iov.iov_len = size;
+
+  memset( &msghdr, 0, sizeof( msghdr ) );
+  msghdr.msg_iov = &iov;
+  msghdr.msg_iovlen = 1;
+  msghdr.msg_name = (void*) &to.sa;
+  msghdr.msg_namelen = to.addrlen;
+  msghdr.msg_control = cmsg;
+  msghdr.msg_controllen = 0;
+
+  /* fill message control */
+  cmsghdr = (struct cmsghdr *)cmsg;
+  memset( cmsghdr, 0, sizeof( *cmsghdr ) );
+  cmsghdr->cmsg_level = IPPROTO_IPV6;
+  cmsghdr->cmsg_type = IPV6_PKTINFO;
+  cmsghdr->cmsg_len = CMSG_LEN( sizeof( *info ) );
+  info = (struct in6_pktinfo *)CMSG_DATA( cmsghdr );
+  memset( info, 0, sizeof( *info ) );
+  memcpy( &info->ipi6_addr, &from.sin6.sin6_addr, sizeof( from.sin6.sin6_addr ) );
+  msghdr.msg_controllen += CMSG_SPACE( sizeof( *info ) );
+
+  /* send the message ! */
+  return sendmsg( sock, &msghdr, flags );
+}
+
 void Connection::send( string s )
 {
   if ( !has_remote_addr ) {
@@ -461,6 +502,7 @@ string Connection::recv_one( int sock_to_recv, bool nonblocking )
 {
   /* receive source address, ECN, and payload in msghdr structure */
   Addr packet_remote_addr;
+  Addr packet_local_addr;
   struct msghdr header;
   struct iovec msg_iovec;
 
@@ -496,19 +538,31 @@ string Connection::recv_one( int sock_to_recv, bool nonblocking )
 
   packet_remote_addr.addrlen = header.msg_namelen;
 
-  /* receive ECN */
+  /* receive ECN and local address targeted by the packet */
   bool congestion_experienced = false;
 
-  struct cmsghdr *ecn_hdr = CMSG_FIRSTHDR( &header );
-  if ( ecn_hdr
-       && (ecn_hdr->cmsg_level == IPPROTO_IP)
-       && (ecn_hdr->cmsg_type == IP_TOS) ) {
-    /* got one */
-    uint8_t *ecn_octet_p = (uint8_t *)CMSG_DATA( ecn_hdr );
-    assert( ecn_octet_p );
+  struct cmsghdr *cmsghdr;
+  for ( cmsghdr = CMSG_FIRSTHDR( &header ); cmsghdr != NULL; cmsghdr = CMSG_NXTHDR( &header, cmsghdr ) ) {
+    if ( (cmsghdr->cmsg_level == IPPROTO_IP)
+	 && (cmsghdr->cmsg_type == IP_TOS) ) {
+      uint8_t *ecn_octet_p = (uint8_t *)CMSG_DATA( cmsghdr );
+      assert( ecn_octet_p );
 
-    if ( (*ecn_octet_p & 0x03) == 0x03 ) {
-      congestion_experienced = true;
+      if ( (*ecn_octet_p & 0x03) == 0x03 ) {
+	congestion_experienced = true;
+      }
+
+    } else if ( cmsghdr->cmsg_level == IPPROTO_IPV6 ) {
+      if ( cmsghdr->cmsg_type == IPV6_PKTINFO ) {
+	struct in6_pktinfo *info = (struct in6_pktinfo *)CMSG_DATA( cmsghdr );
+	memcpy( &packet_local_addr.sin6.sin6_addr, &info->ipi6_addr, sizeof( struct in6_addr ) );
+	packet_local_addr.sa.sa_family = AF_INET6;
+      } else if ( cmsghdr->cmsg_type == IPV6_TCLASS ) {
+	uint8_t tclass = *(uint8_t *)CMSG_DATA( cmsghdr );
+	if ( (tclass & 0x03) == 0x03 ) {
+	  congestion_experienced = true;
+	}
+      }
     }
   }
 
