@@ -565,8 +565,6 @@ string Connection::recv_one( int sock_to_recv, bool nonblocking )
     throw NetworkException( "Received oversize datagram", errno );
   }
 
-  packet_remote_addr.addrlen = header.msg_namelen;
-
   /* receive ECN and local address targeted by the packet */
   bool congestion_experienced = false;
 
@@ -595,22 +593,30 @@ string Connection::recv_one( int sock_to_recv, bool nonblocking )
     }
   }
 
+  packet_remote_addr.addrlen = header.msg_namelen;
+  struct flow_key flow_key( packet_local_addr, packet_remote_addr );
+  Flow *flow_info = flows[ flow_key ];
+  if ( !flow_info ) {
+    flow_info = new Flow();
+    flows[ flow_key ] = flow_info;
+  }
+
   Packet p( string( msg_payload, received_len ), &session );
 
   dos_assert( p.direction == (server ? TO_SERVER : TO_CLIENT) ); /* prevent malicious playback to sender */
 
-  if ( p.seq >= last_flow->expected_receiver_seq ) { /* don't use out-of-order packets for timestamp or targeting */
-    last_flow->expected_receiver_seq = p.seq + 1; /* this is security-sensitive because a replay attack could otherwise
+  if ( p.seq >= flow_info->expected_receiver_seq ) { /* don't use out-of-order packets for timestamp or targeting */
+    flow_info->expected_receiver_seq = p.seq + 1; /* this is security-sensitive because a replay attack could otherwise
 						     screw up the timestamp and targeting */
 
     if ( p.timestamp != uint16_t(-1) ) {
-      last_flow->saved_timestamp = p.timestamp;
-      last_flow->saved_timestamp_received_at = timestamp();
+      flow_info->saved_timestamp = p.timestamp;
+      flow_info->saved_timestamp_received_at = timestamp();
 
       if ( congestion_experienced ) {
 	/* signal counterparty to slow down */
 	/* this will gradually slow the counterparty down to the minimum frame rate */
-	last_flow->saved_timestamp -= CONGESTION_TIMESTAMP_PENALTY;
+	flow_info->saved_timestamp -= CONGESTION_TIMESTAMP_PENALTY;
 	if ( server ) {
 	  fprintf( stderr, "Received explicit congestion notification.\n" );
 	}
@@ -622,16 +628,16 @@ string Connection::recv_one( int sock_to_recv, bool nonblocking )
       double R = timestamp_diff( now, p.timestamp_reply );
 
       if ( R < 5000 ) { /* ignore large values, e.g. server was Ctrl-Zed */
-	if ( !last_flow->RTT_hit ) { /* first measurement */
-	  last_flow->SRTT = R;
-	  last_flow->RTTVAR = R / 2;
-	  last_flow->RTT_hit = true;
+	if ( !flow_info->RTT_hit ) { /* first measurement */
+	  flow_info->SRTT = R;
+	  flow_info->RTTVAR = R / 2;
+	  flow_info->RTT_hit = true;
 	} else {
 	  const double alpha = 1.0 / 8.0;
 	  const double beta = 1.0 / 4.0;
 	  
-	  last_flow->RTTVAR = (1 - beta) * last_flow->RTTVAR + ( beta * fabs( last_flow->SRTT - R ) );
-	  last_flow->SRTT = (1 - alpha) * last_flow->SRTT + ( alpha * R );
+	  flow_info->RTTVAR = (1 - beta) * flow_info->RTTVAR + ( beta * fabs( flow_info->SRTT - R ) );
+	  flow_info->SRTT = (1 - alpha) * flow_info->SRTT + ( alpha * R );
 	}
       }
     }
@@ -641,7 +647,16 @@ string Connection::recv_one( int sock_to_recv, bool nonblocking )
     last_heard = timestamp();
 
     if ( server ) { /* only client can roam */
-      last_flow_key = flow_key( packet_local_addr, packet_remote_addr );
+      if ( p.is_probe() ) {
+	if ( UNLIKELY( !last_flow ) ) { /* This should only occurs once. */
+	  last_flow_key = flow_key;
+	  last_flow = flow_info;
+	}
+	send_probe( flow_key, flow_info );
+	return p.payload;
+      }
+      last_flow_key = flow_key;
+      last_flow = flow_info;
 
       if ( (socklen_t)remote_addr.addrlen != header.msg_namelen ||
 	   memcmp( &remote_addr, &packet_remote_addr, remote_addr.addrlen ) != 0 ) {
