@@ -397,6 +397,34 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
   socks.push_back( Socket() );
 }
 
+void Connection::send_probes( void )
+{
+  assert( !server );
+  for ( std::map< struct flow_key, Flow* >::iterator it = flows.begin();
+	it != flows.end();
+	it++ ) {
+    if ( it->second != last_flow ) {
+      send_probe( *it );
+    }
+  }
+}
+
+bool Connection::send_probe( std::pair< const struct flow_key, Flow * > &flow )
+{
+  Flow *flow_info = flow.second;
+  string empty("");
+  Packet px = new_packet( flow_info, PROBE_FLAG, empty );
+
+  string p = px.tostring( &session );
+
+  ssize_t bytes_sent = sendfromto( sock(), p.data(), p.size(), MSG_DONTWAIT, flow.first.src, flow.first.dst );
+  if ( bytes_sent < 0 ) {
+    flow_info->SRTT += 1000;
+  }
+
+  return ( bytes_sent != static_cast<ssize_t>( p.size() ) );
+}
+
 ssize_t Connection::sendfromto( int sock, const char *buffer, size_t size, int flags, const Addr &from, const Addr &to )
 {
   struct msghdr msghdr;
