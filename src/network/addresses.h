@@ -57,6 +57,15 @@ namespace Network {
     };
 
     Addr() : addrlen( sizeof( ss ) ), ss() { memset( &ss, 0, sizeof( ss ) ); }
+    Addr( int family ) {
+      switch ( family ) {
+      case AF_UNSPEC: addrlen = 0;              break;
+      case AF_INET:   addrlen = sizeof( sin );  break;
+      case AF_INET6:  addrlen = sizeof( sin6 ); break;
+      default:        addrlen = sizeof( ss );   break;
+      }
+      memset( &ss, 0, addrlen );
+    }
     Addr( struct sockaddr &s ) {
       switch ( s.sa_family ) {
       case AF_UNSPEC: addrlen = 0;              break;
