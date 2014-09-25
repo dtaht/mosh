@@ -190,7 +190,7 @@ namespace Network {
 
     void prune_sockets( void );
 
-    ssize_t sendfromto( int sock, Addr &from, Addr &to, char *buffer, size_t size, int flags );
+    ssize_t sendfromto( int sock, const char *buffer, size_t size, int flags, const Addr &from, const Addr &to );
     string recv_one( int sock_to_recv, bool nonblocking );
 
   public:

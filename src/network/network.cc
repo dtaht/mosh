@@ -397,13 +397,13 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
   socks.push_back( Socket() );
 }
 
-ssize_t Connection::sendfromto( int sock, Addr &from, Addr &to, char *buffer, size_t size, int flags )
+ssize_t Connection::sendfromto( int sock, const char *buffer, size_t size, int flags, const Addr &from, const Addr &to )
 {
   struct msghdr msghdr;
   struct cmsghdr *cmsghdr;
   struct in6_pktinfo *info;
   struct iovec iov = {
-    .iov_base = buffer,
+    .iov_base = (void*) buffer,
     .iov_len = size
   };
   char cmsg[256];
@@ -411,7 +411,7 @@ ssize_t Connection::sendfromto( int sock, Addr &from, Addr &to, char *buffer, si
   memset( &msghdr, 0, sizeof( msghdr ) );
   msghdr.msg_iov = &iov;
   msghdr.msg_iovlen = 1;
-  msghdr.msg_name = &to.sa;
+  msghdr.msg_name = (void*) &to.sa;
   msghdr.msg_namelen = to.addrlen;
   msghdr.msg_control = cmsg;
   msghdr.msg_controllen = 0;
