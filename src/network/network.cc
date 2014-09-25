@@ -378,6 +378,40 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
   socks.push_back( Socket() );
 }
 
+ssize_t Connection::sendfromto( int sock, Addr &from, Addr &to, char *buffer, size_t size, int flags )
+{
+  struct msghdr msghdr;
+  struct cmsghdr *cmsghdr;
+  struct in6_pktinfo *info;
+  struct iovec iov = {
+    .iov_base = buffer,
+    .iov_len = size
+  };
+  char cmsg[256];
+
+  memset( &msghdr, 0, sizeof( msghdr ) );
+  msghdr.msg_iov = &iov;
+  msghdr.msg_iovlen = 1;
+  msghdr.msg_name = &to.sa;
+  msghdr.msg_namelen = to.addrlen;
+  msghdr.msg_control = cmsg;
+  msghdr.msg_controllen = 0;
+
+  /* fill message control */
+  cmsghdr = (struct cmsghdr *)cmsg;
+  memset( cmsghdr, 0, sizeof( *cmsghdr ) );
+  cmsghdr->cmsg_level = IPPROTO_IPV6;
+  cmsghdr->cmsg_type = IPV6_PKTINFO;
+  cmsghdr->cmsg_len = CMSG_LEN( sizeof( *info ) );
+  info = (struct in6_pktinfo *)CMSG_DATA( cmsghdr );
+  memset( info, 0, sizeof( *info ) );
+  memcpy( &info->ipi6_addr, &from.sin6.sin6_addr, sizeof( from.sin6.sin6_addr ) );
+  msghdr.msg_controllen += CMSG_SPACE( sizeof( *info ) );
+
+  /* send the message ! */
+  return sendmsg( sock, &msghdr, flags );
+}
+
 void Connection::send( string s )
 {
   if ( !has_remote_addr ) {
