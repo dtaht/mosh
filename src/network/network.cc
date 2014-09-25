@@ -47,6 +47,7 @@ extern "C" {
 #include <assert.h>
 #include <errno.h>
 #include <unistd.h>
+#include <algorithm>
 
 #include "dos_assert.h"
 #include "fatal_assert.h"
@@ -268,6 +269,7 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
     flows(),
     last_flow_key( Addr(), Addr() ),
     last_flow( NULL ),
+    host_addresses(),
     server( true ),
     key(),
     session( key ),
@@ -360,6 +362,7 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
     flows(),
     last_flow_key( Addr(), Addr() ),
     last_flow( NULL ),
+    host_addresses(),
     server( false ),
     key( key_str ),
     session( key ),
@@ -377,7 +380,8 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
   }
   setup();
 
-  /* associate socket with remote host and port */
+  std::vector< Addr > addresses = host_addresses.get_host_addresses( NULL );
+
   struct addrinfo hints;
   memset( &hints, 0, sizeof( hints ) );
   hints.ai_family = AF_UNSPEC;
@@ -385,16 +389,27 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
   hints.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV;
   AddrInfo ai( ip, port, &hints );
   fatal_assert( ai.res->ai_addrlen <= sizeof( remote_addr ) );
-  remote_addr.addrlen = ai.res->ai_addrlen;
-  memcpy( &remote_addr.sa, ai.res->ai_addr, remote_addr.addrlen );
 
   has_remote_addr = true;
 
-  last_flow_key = flow_key( Addr(), remote_addr );
-  last_flow = new Flow();
-  flows[ last_flow_key ] = last_flow;
+  for ( std::vector< Addr >::const_iterator la_it = addresses.begin();
+	la_it != addresses.end();
+	la_it++ ) {
+    for ( struct addrinfo *ra_it = ai.res; ra_it != NULL; ra_it = ra_it->ai_next ) {
+      if ( la_it->sa.sa_family == ra_it->ai_addr->sa_family ) {
+	struct flow_key flow_key( *la_it, Addr( *ra_it->ai_addr, ra_it->ai_addrlen ) );
+	Flow *flow_info = flows[ flow_key ];
+	if ( !flow_info ) { /* should be always true at this point. */
+	  flow_info = new Flow();
+	  flows[ flow_key ] = flow_info;
+	}
+      }
+    }
+  }
 
   socks.push_back( Socket() );
+
+  send_probes(); /* This should check all flows. */
 }
 
 void Connection::send_probes( void )
@@ -464,25 +479,70 @@ void Connection::send( string s )
     return;
   }
 
-  Packet px = new_packet( last_flow, 0, s );
+  have_send_exception = true;
 
-  string p = px.tostring( &session );
+  ssize_t bytes_sent = -1;
+  if ( server ) {
+    Packet px = new_packet( last_flow, 0, s );
 
-  ssize_t bytes_sent = sendto( sock(), p.data(), p.size(), MSG_DONTWAIT,
-			       &remote_addr.sa, remote_addr.addrlen );
+    string p = px.tostring( &session );
 
-  if ( bytes_sent == static_cast<ssize_t>( p.size() ) ) {
-    have_send_exception = false;
-  } else {
-    /* Notify the frontend on sendto() failure, but don't alter control flow.
-       sendto() success is not very meaningful because packets can be lost in
-       flight anyway. */
-    have_send_exception = true;
-    send_exception = NetworkException( "sendto", errno );
-
-    if ( errno == EMSGSIZE ) {
-      last_flow->MTU = 500; /* payload MTU of last resort */
+    bytes_sent = sendfromto( sock(), p.data(), p.size(), MSG_DONTWAIT, last_flow_key.src, last_flow_key.dst );
+    if ( bytes_sent == static_cast<ssize_t>( p.size() ) ) {
+      have_send_exception = false;
     }
+
+  } else if ( UNLIKELY( last_flow == NULL ) ) { /* First send. */
+    for ( std::map< struct flow_key, Flow* >::iterator it = flows.begin();
+	  it != flows.end();
+	  it++ ) {
+      Packet px = new_packet( it->second, 0, s );
+      string p = px.tostring( &session );
+      bytes_sent = sendfromto( sock(), p.data(), p.size(), MSG_DONTWAIT, it->first.src, it->first.dst );
+      if ( bytes_sent < 0 ) {
+	it->second->SRTT = MIN( it->second->SRTT + 1000, 10000);
+	if ( errno == EMSGSIZE ) {
+	  it->second->MTU = 500; /* payload MTU of last resort */
+	}
+      } else if ( bytes_sent == static_cast<ssize_t>( p.size() ) ) {
+	have_send_exception = false;
+	last_flow_key = it->first;
+	last_flow = it->second;
+      }
+    }
+
+  } else {
+    std::vector< std::pair< struct flow_key, Flow* > > flows_vect( flows.begin(), flows.end() );
+    std::sort( flows_vect.begin(), flows_vect.end(), Flow::srtt_order );
+    for ( std::vector< std::pair< struct flow_key, Flow* > >::const_iterator it = flows_vect.begin();
+	  it != flows_vect.end();
+	  it ++ ) {
+      Packet px = new_packet( it->second, 0, s );
+      string p = px.tostring( &session );
+      bytes_sent = sendfromto( sock(), p.data(), p.size(), MSG_DONTWAIT, it->first.src, it->first.dst );
+      if ( bytes_sent < 0 ) {
+	it->second->SRTT = MIN( it->second->SRTT + 1000, 10000);
+	if ( errno == EMSGSIZE ) {
+	  it->second->MTU = 500; /* payload MTU of last resort */
+	}
+      } else if ( bytes_sent == static_cast<ssize_t>( p.size() ) ){
+	have_send_exception = false;
+	if ( last_flow != it->second ) {
+	  last_flow_key = it->first;
+	  last_flow = it->second;
+	}
+	break;
+      }
+    }
+
+    send_probes();
+  }
+
+  if ( have_send_exception ) {
+    /* Notify the frontend on sendmsg() failure, but don't alter control flow.
+       sendmsg() success is not very meaningful because packets can be lost in
+       flight anyway. */
+    send_exception = NetworkException( "sendmsg", errno );
   }
 
   uint64_t now = timestamp();

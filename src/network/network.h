@@ -174,6 +174,7 @@ namespace Network {
     std::map< struct flow_key, Flow* > flows;
     struct flow_key last_flow_key;
     Flow *last_flow;
+    Addresses host_addresses;
 
     bool server;
 
