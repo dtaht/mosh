@@ -108,7 +108,7 @@ namespace Network {
 
     static const int CONGESTION_TIMESTAMP_PENALTY = 500; /* ms */
 
-    bool try_bind( const char *addr, int port_low, int port_high );
+    bool try_bind( int port_low, int port_high );
 
     struct flow_key {
       Addr src;
@@ -149,7 +149,7 @@ namespace Network {
 
     public:
       int fd( void ) const { return _fd; }
-      Socket( int family );
+      Socket();
       ~Socket();
 
       Socket( const Socket & other );

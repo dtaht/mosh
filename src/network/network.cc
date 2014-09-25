@@ -140,7 +140,7 @@ void Connection::hop_port( void )
 
   setup();
   assert( remote_addr_len != 0 );
-  socks.push_back( Socket( remote_addr.sa.sa_family ) );
+  socks.push_back( Socket() );
 
   prune_sockets();
 }
@@ -187,36 +187,34 @@ Connection::Flow::Flow( void )
   }
 }
 
-Connection::Socket::Socket( int family )
-  : _fd( socket( family, SOCK_DGRAM, 0 ) )
+Connection::Socket::Socket( void )
+  : _fd( socket( PF_INET6, SOCK_DGRAM, 0 ) )
 {
   if ( _fd < 0 ) {
     throw NetworkException( "socket", errno );
   }
 
+  const int on = 1;
+  const int off = 0;
+
+  /* Hybrid socket. */
+  if ( setsockopt( _fd, IPPROTO_IPV6, IPV6_V6ONLY, &off, sizeof( off ) ) < 0 ) {
+    throw NetworkException( "setsockopt( IPV6_V6ONLY off )", errno );
+  }
+
+#ifdef HAVE_IPV6_MTU_DISCOVER
   /* Disable path MTU discovery */
-#ifdef HAVE_IP_MTU_DISCOVER
-  char flag = IP_PMTUDISC_DONT;
+  char flag = IPV6_PMTUDISC_DONT;
   socklen_t optlen = sizeof( flag );
-  if ( setsockopt( _fd, IPPROTO_IP, IP_MTU_DISCOVER, &flag, optlen ) < 0 ) {
-    throw NetworkException( "setsockopt", errno );
+  if ( setsockopt( _fd, IPPROTO_IPV6, IPV6_MTU_DISCOVER, &flag, optlen ) < 0 ) {
+    throw NetworkException( "setsockopt( MTU_DISCOVER don't )", errno );
   }
 #endif
-
-  //  int dscp = 0x92; /* OS X does not have IPTOS_DSCP_AF42 constant */
-  int dscp = 0x02; /* ECN-capable transport only */
-  if ( setsockopt( _fd, IPPROTO_IP, IP_TOS, &dscp, sizeof (dscp)) < 0 ) {
-    //    perror( "setsockopt( IP_TOS )" );
-  }
 
   /* request explicit congestion notification on received datagrams */
-#ifdef HAVE_IP_RECVTOS
-  int tosflag = true;
-  socklen_t tosoptlen = sizeof( tosflag );
-  if ( setsockopt( _fd, IPPROTO_IP, IP_RECVTOS, &tosflag, tosoptlen ) < 0 ) {
-    perror( "setsockopt( IP_RECVTOS )" );
+  if ( setsockopt( _fd, IPPROTO_IPV6, IPV6_RECVTCLASS, &on, sizeof( on ) ) < 0 ) {
+    perror( "setsockopt( IPV6_RECVTCLASS on )" );
   }
-#endif
 }
 
 void Connection::setup( void )
@@ -276,8 +274,10 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
   /* The mosh wrapper always gives an IP request, in order
      to deal with multihomed servers. The port is optional. */
 
-  /* If an IP request is given, we try to bind to that IP, but we also
-     try INADDR_ANY. If a port request is given, we bind only to that port. */
+  /* We ignore the IP provided, because anyway, we bind to a hybrid (dual-stack)
+     socket.  The problem with multihomed server is solved by sending back
+     packets answering with the last known local IP used to receive a packet.
+     If a port request is given, we bind only to that port. */
 
   /* convert port numbers */
   int desired_port_low = 0;
@@ -287,20 +287,9 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
     throw NetworkException("Invalid port range", 0);
   }
 
-  /* try to bind to desired IP first */
-  if ( desired_ip ) {
-    try {
-      if ( try_bind( desired_ip, desired_port_low, desired_port_high ) ) { return; }
-    } catch ( const NetworkException& e ) {
-      fprintf( stderr, "Error binding to IP %s: %s: %s\n",
-	       desired_ip,
-	       e.function.c_str(), strerror( e.the_errno ) );
-    }
-  }
-
-  /* now try any local interface */
+  /* try any local interface */
   try {
-    if ( try_bind( NULL, desired_port_low, desired_port_high ) ) { return; }
+    if ( try_bind( desired_port_low, desired_port_high ) ) { return; }
   } catch ( const NetworkException& e ) {
     fprintf( stderr, "Error binding to any interface: %s: %s\n",
 	     e.function.c_str(), strerror( e.the_errno ) );
@@ -311,18 +300,9 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
   throw NetworkException( "Could not bind", errno );
 }
 
-bool Connection::try_bind( const char *addr, int port_low, int port_high )
+bool Connection::try_bind( int port_low, int port_high )
 {
-  struct addrinfo hints;
-  memset( &hints, 0, sizeof( hints ) );
-  hints.ai_family = AF_UNSPEC;
-  hints.ai_socktype = SOCK_DGRAM;
-  hints.ai_flags = AI_PASSIVE | AI_NUMERICHOST | AI_NUMERICSERV;
-  AddrInfo ai( addr, "0", &hints );
-
-  Addr local_addr;
-  socklen_t local_addr_len = ai.res->ai_addrlen;
-  memcpy( &local_addr.sa, ai.res->ai_addr, local_addr_len );
+  Addr local_addr( AF_INET6 );
 
   int search_low = PORT_RANGE_LOW, search_high = PORT_RANGE_HIGH;
 
@@ -333,26 +313,17 @@ bool Connection::try_bind( const char *addr, int port_low, int port_high )
     search_high = port_high;
   }
 
-  socks.push_back( Socket( local_addr.sa.sa_family ) );
+  socks.push_back( Socket() );
   for ( int i = search_low; i <= search_high; i++ ) {
-    switch (local_addr.sa.sa_family) {
-    case AF_INET:
-      local_addr.sin.sin_port = htons( i );
-      break;
-    case AF_INET6:
-      local_addr.sin6.sin6_port = htons( i );
-      break;
-    default:
-      throw NetworkException( "Unknown address family", 0 );
-    }
+    local_addr.sin6.sin6_port = htons( i );
 
-    if ( bind( sock(), &local_addr.sa, local_addr_len ) == 0 ) {
+    if ( bind( sock(), &local_addr.sa, local_addr.addrlen ) == 0 ) {
       return true;
     } else if ( i == search_high ) { /* last port to search */
       int saved_errno = errno;
       socks.pop_back();
       char host[ NI_MAXHOST ], serv[ NI_MAXSERV ];
-      int errcode = getnameinfo( &local_addr.sa, local_addr_len,
+      int errcode = getnameinfo( &local_addr.sa, local_addr.addrlen,
 				 host, sizeof( host ), serv, sizeof( serv ),
 				 NI_DGRAM | NI_NUMERICHOST | NI_NUMERICSERV );
       if ( errcode != 0 ) {
@@ -404,7 +375,7 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
   last_flow = new Flow();
   flows[ tmp ] = last_flow;
 
-  socks.push_back( Socket( remote_addr.sa.sa_family ) );
+  socks.push_back( Socket() );
 }
 
 void Connection::send( string s )

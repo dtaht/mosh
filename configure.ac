@@ -350,6 +350,11 @@ AC_CHECK_DECL([IP_MTU_DISCOVER],
      [Define if IP_MTU_DISCOVER is a valid sockopt.])],
   , [[#include <netinet/in.h>]])
 
+AC_CHECK_DECL([IPV6_MTU_DISCOVER],
+  [AC_DEFINE([HAVE_IPV6_MTU_DISCOVER], [1],
+     [Define if IPV6_MTU_DISCOVER is a valid sockopt.])],
+  , [[#include <netinet/in.h>]])
+
 AC_CHECK_DECL([IP_RECVTOS],
   [AC_DEFINE([HAVE_IP_RECVTOS], [1],
      [Define if IP_RECVTOS is a valid sockopt.])],
