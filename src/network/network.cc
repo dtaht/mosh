@@ -265,6 +265,7 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
     remote_addr(),
     remote_addr_len( 0 ),
     flows(),
+    last_flow_key( Addr(), Addr() ),
     last_flow( NULL ),
     server( true ),
     key(),
@@ -352,6 +353,7 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
     remote_addr(),
     remote_addr_len( 0 ),
     flows(),
+    last_flow_key( Addr(), Addr() ),
     last_flow( NULL ),
     server( false ),
     key( key_str ),
@@ -378,9 +380,9 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
 
   has_remote_addr = true;
 
-  struct flow_key tmp( Addr(), remote_addr );
+  last_flow_key = flow_key( Addr(), remote_addr );
   last_flow = new Flow();
-  flows[ tmp ] = last_flow;
+  flows[ last_flow_key ] = last_flow;
 
   socks.push_back( Socket() );
 }
@@ -599,6 +601,8 @@ string Connection::recv_one( int sock_to_recv, bool nonblocking )
     last_heard = timestamp();
 
     if ( server ) { /* only client can roam */
+      last_flow_key = flow_key( packet_local_addr, packet_remote_addr );
+
       if ( remote_addr_len != header.msg_namelen ||
 	   memcmp( &remote_addr, &packet_remote_addr, remote_addr_len ) != 0 ) {
 	remote_addr = packet_remote_addr;

@@ -161,6 +161,7 @@ namespace Network {
     Addr remote_addr;
     socklen_t remote_addr_len;
     std::map< struct flow_key, Flow* > flows;
+    struct flow_key last_flow_key;
     Flow *last_flow;
 
     bool server;
