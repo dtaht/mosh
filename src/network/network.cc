@@ -609,14 +609,6 @@ string Connection::recv_one( int sock_to_recv, bool nonblocking )
     throw NetworkException( "Received oversize datagram", errno );
   }
 
-  packet_remote_addr.addrlen = header.msg_namelen;
-  struct flow_key flow_key( packet_local_addr, packet_remote_addr );
-  Flow *flow_info = flows[ flow_key ];
-  if ( !flow_info ) {
-    flow_info = new Flow();
-    flows[ flow_key ] = flow_info;
-  }
-
   /* receive ECN and local address targeted by the packet */
   bool congestion_experienced = false;
 
@@ -642,6 +634,14 @@ string Connection::recv_one( int sock_to_recv, bool nonblocking )
 	}
       }
     }
+  }
+
+  packet_remote_addr.addrlen = header.msg_namelen;
+  struct flow_key flow_key( packet_local_addr, packet_remote_addr );
+  Flow *flow_info = flows[ flow_key ];
+  if ( !flow_info ) {
+    flow_info = new Flow();
+    flows[ flow_key ] = flow_info;
   }
 
   Packet p( string( msg_payload, received_len ), &session );
