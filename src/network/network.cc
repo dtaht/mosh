@@ -497,10 +497,8 @@ void Connection::send( string s )
 	  it++ ) {
       Packet px = new_packet( it->second, 0, s );
       string p = px.tostring( &session );
-      if ( bytes_sent >= 0 ) {
-	log_dbg( LOG_DEBUG_COMMON, "    %s -> %s ",
-		 it->first.src.tostring().c_str(), it->first.dst.tostring().c_str() );
-      }
+      log_dbg( LOG_DEBUG_COMMON, "    %s -> %s ",
+	       it->first.src.tostring().c_str(), it->first.dst.tostring().c_str() );
       bytes_sent = sendfromto( sock(), p.data(), p.size(), MSG_DONTWAIT, it->first.src, it->first.dst );
       if ( bytes_sent < 0 ) {
 	it->second->SRTT = MIN( it->second->SRTT + 1000, 10000);
