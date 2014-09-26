@@ -721,6 +721,10 @@ string Connection::recv_one( int sock_to_recv, bool nonblocking )
 
     if ( server ) { /* only client can roam */
       if ( p.is_probe() ) {
+	if ( UNLIKELY( !last_flow ) ) { /* This should only occurs once. */
+	  last_flow_key = flow_key;
+	  last_flow = flow_info;
+	}
 	send_probe( flow_key, flow_info );
 	return p.payload;
       }
