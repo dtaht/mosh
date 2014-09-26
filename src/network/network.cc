@@ -485,7 +485,8 @@ void Connection::send( string s )
     string p = px.tostring( &session );
 
     bytes_sent = sendfromto( sock(), p.data(), p.size(), MSG_DONTWAIT, last_flow_key.src, last_flow_key.dst );
-    if ( bytes_sent >= 0 ) {
+    if ( bytes_sent == static_cast<ssize_t>( p.size() ) ) {
+      have_send_exception = false;
       log_dbg( LOG_DEBUG_COMMON, ": done (%s -> %s).\n",
 	       last_flow_key.src.tostring().c_str(), last_flow_key.dst.tostring().c_str() );
     }
@@ -505,6 +506,7 @@ void Connection::send( string s )
  	log_dbg( LOG_PERROR, "failed (SRTT = %dms)", (int)it->second->SRTT );
       } else if ( bytes_sent == static_cast<ssize_t>( p.size() ) ) {
 	log_dbg( LOG_DEBUG_COMMON, "success.\n" );
+	have_send_exception = false;
 	last_flow_key = it->first;
 	last_flow = it->second;
       }
