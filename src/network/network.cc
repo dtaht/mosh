@@ -496,7 +496,7 @@ void Connection::send( string s )
 	       last_flow_key.src.tostring().c_str(), last_flow_key.dst.tostring().c_str() );
     }
 
-  } else if ( last_flow == NULL ) { /* First send. */
+  } else if ( UNLIKELY( last_flow == NULL ) ) { /* First send. */
     log_dbg( LOG_DEBUG_COMMON, " to all our addresses (first send):\n");
     for ( std::map< struct flow_key, Flow* >::iterator it = flows.begin();
 	  it != flows.end();
