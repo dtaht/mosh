@@ -71,6 +71,11 @@ template <class MyState, class RemoteState>
 void Transport<MyState, RemoteState>::recv( void )
 {
   string s( connection.recv() );
+
+  if ( s.empty() ) {
+    return;
+  }
+
   Fragment frag( s );
 
   if ( fragments.add_fragment( frag ) ) { /* complete packet */
