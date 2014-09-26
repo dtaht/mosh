@@ -81,11 +81,15 @@ string Addr::tostring( void ) const {
   } else if (family == AF_INET6) {
     addr = (void*) &sin6.sin6_addr;
     port = ntohs( sin6.sin6_port );
+  } else if ( family == AF_UNSPEC ) {
+    return string("<unspecified>"); /* Choice let to the system. */
   } else {
     return string("<Unknown protocol family address>");
   }
   tmp = inet_ntop(family, addr, dst, INET6_ADDRSTRLEN);
-  sprintf( dst + strlen(tmp), ":%d", port );
+  if ( port ) {
+    snprintf( dst + strlen(tmp), 6 + 1, ":%d", port );
+  }
   return string( tmp );
 }
 
