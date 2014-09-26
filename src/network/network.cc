@@ -372,6 +372,8 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
   setup();
 
   std::vector< Addr > addresses = host_addresses.get_host_addresses( NULL );
+  addresses.push_back( Addr() ); /* this will allow the system to choose the
+				    source address on one flow. */
 
   struct addrinfo hints;
   memset( &hints, 0, sizeof( hints ) );
@@ -387,7 +389,7 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
 	la_it != addresses.end();
 	la_it++ ) {
     for ( struct addrinfo *ra_it = ai.res; ra_it != NULL; ra_it = ra_it->ai_next ) {
-      if ( la_it->sa.sa_family == ra_it->ai_addr->sa_family ) {
+      if ( la_it->sa.sa_family == AF_UNSPEC || la_it->sa.sa_family == ra_it->ai_addr->sa_family ) {
 	struct flow_key flow_key( *la_it, Addr( *ra_it->ai_addr, ra_it->ai_addrlen ) );
 	Flow *flow_info = flows[ flow_key ];
 	if ( !flow_info ) { /* should be always true at this point. */
