@@ -436,13 +436,16 @@ bool Connection::send_probe( const struct flow_key &flow_key, Flow *flow )
   return ( bytes_sent != static_cast<ssize_t>( p.size() ) );
 }
 
-ssize_t Connection::sendfromto( int sock, const char *buffer, size_t size, int flags, const Addr &from, const Addr &to )
+ssize_t Connection::sendfromto( int sock, const char *buffer, size_t size, int flags, Addr from, Addr to )
 {
   struct msghdr msghdr;
   struct cmsghdr *cmsghdr;
   struct in6_pktinfo *info;
   struct iovec iov;
   char cmsg[256];
+
+  from.to_v4mapped();
+  to.to_v4mapped();
 
   iov.iov_base = (void*) buffer;
   iov.iov_len = size;
@@ -665,6 +668,8 @@ string Connection::recv_one( int sock_to_recv, bool nonblocking )
   }
 
   packet_remote_addr.addrlen = header.msg_namelen;
+  packet_remote_addr.to_v4form();
+  packet_local_addr.to_v4form();
   struct flow_key flow_key( packet_local_addr, packet_remote_addr );
   Flow *flow_info = flows[ flow_key ];
   log_dbg( LOG_DEBUG_COMMON, "Message received on %sflow (%s <- %s): ", flow_info ? "" : "new ",
