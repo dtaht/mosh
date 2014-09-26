@@ -503,10 +503,10 @@ void Connection::send( string s )
       bytes_sent = sendfromto( sock(), p.data(), p.size(), MSG_DONTWAIT, it->first.src, it->first.dst );
       if ( bytes_sent < 0 ) {
 	it->second->SRTT = MIN( it->second->SRTT + 1000, 10000);
- 	log_dbg( LOG_PERROR, "failed (SRTT = %dms)", (int)it->second->SRTT );
+ 	log_dbg( LOG_PERROR, "(failed (SRTT = %dms))", (int)it->second->SRTT );
       } else if ( bytes_sent == static_cast<ssize_t>( p.size() ) ) {
-	log_dbg( LOG_DEBUG_COMMON, "success.\n" );
 	have_send_exception = false;
+	log_dbg( LOG_DEBUG_COMMON, "(success).\n" );
 	last_flow_key = it->first;
 	last_flow = it->second;
       }
@@ -532,7 +532,7 @@ void Connection::send( string s )
 	  last_flow_key = it->first;
 	  last_flow = it->second;
 	} else {
-	  log_dbg( LOG_DEBUG_COMMON, "success (SRTT = %dms).\n", (int)it->second->SRTT );
+	  log_dbg( LOG_DEBUG_COMMON, ": success (SRTT = %dms).\n", (int)it->second->SRTT );
 	}
 	break;
       }
@@ -692,6 +692,12 @@ string Connection::recv_one( int sock_to_recv, bool nonblocking )
       }
     }
 
+    if ( p.is_probe() ) {
+      log_dbg( LOG_DEBUG_COMMON, "probe, " );
+    } else {
+      log_dbg( LOG_DEBUG_COMMON, "data, " );
+    }
+
     if ( p.timestamp_reply != uint16_t(-1) ) {
       uint16_t now = timestamp16();
       double R = timestamp_diff( now, p.timestamp_reply );
@@ -709,10 +715,9 @@ string Connection::recv_one( int sock_to_recv, bool nonblocking )
 	  flow_info->SRTT = (1 - alpha) * flow_info->SRTT + ( alpha * R );
 	}
       }
-      if ( p.is_probe() ) {
-        log_dbg( LOG_DEBUG_COMMON, "probe, RTT = %ums, SRTT = %ums.\n",
-		 (unsigned int)R, (unsigned int)flow_info->SRTT );
-      }
+      log_dbg( LOG_DEBUG_COMMON, "RTT = %ums, SRTT = %ums.\n", (unsigned int)R, (unsigned int)flow_info->SRTT );
+    } else {
+      log_dbg( LOG_DEBUG_COMMON, "no timestamp reply.\n" );
     }
 
     /* auto-adjust to remote host */
