@@ -40,6 +40,8 @@
 #include <vector>
 #include <string>
 
+#include <assert.h>
+
 #define IN_IS_ADDR_LOOPBACK(sin) ( ( (char*)sin)[0] == 127 )
 
 using namespace std;
@@ -47,6 +49,8 @@ using namespace std;
 namespace Network {
 
   struct Addr {
+  private:
+    const static unsigned char v4prefix[];
   public:
     int addrlen; /* length of the socket address (not just the IP address). */
     union {
@@ -116,6 +120,35 @@ namespace Network {
 
     bool is_linklocal( void ) const {
       return sa.sa_family == AF_INET6 && IN6_IS_ADDR_LINKLOCAL( &sin6.sin6_addr );
+    }
+
+    bool is_v4mapped( void ) const {
+      return sa.sa_family == AF_INET6 && memcmp( v4prefix, &sin6.sin6_addr, 12 ) == 0;
+    }
+
+    void to_v4mapped( void ) {
+      if( sa.sa_family != AF_INET ) {
+	return;
+      }
+      struct sockaddr_in6 tmp = {0};
+      memcpy( &tmp.sin6_addr, v4prefix, 12);
+      memcpy( ((unsigned char*)&tmp.sin6_addr) + 12, &sin.sin_addr, 4 );
+      tmp.sin6_port = sin.sin_port;
+      tmp.sin6_family = AF_INET6;
+      memcpy( &sin6, &tmp, sizeof( tmp ) );
+      addrlen = sizeof( sin6 );
+    }
+
+    void to_v4form( void ) {
+      if( !is_v4mapped() ) {
+	return;
+      }
+      struct sockaddr_in tmp = {0};
+      memcpy( &tmp.sin_addr, ((unsigned char*)&sin6.sin6_addr) + 12, 4 );
+      tmp.sin_port = sin6.sin6_port;
+      tmp.sin_family = AF_INET;
+      memcpy( &sin, &tmp, sizeof( tmp ) );
+      addrlen = sizeof( sin );
     }
   };
 

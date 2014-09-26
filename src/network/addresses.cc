@@ -39,6 +39,8 @@ extern "C" {
 
 using namespace Network;
 
+const unsigned char Addr::v4prefix[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF};
+
 std::vector< Addr > Addresses::get_host_addresses( int *has_change )
 {
   array_t kaddrs = get_kernel_addresses();
