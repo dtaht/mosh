@@ -613,7 +613,7 @@ string Connection::recv_one( int sock_to_recv, bool nonblocking )
 
   /* receive source address */
   header.msg_name = &packet_remote_addr.sa;
-  header.msg_namelen = sizeof( packet_remote_addr );
+  header.msg_namelen = packet_remote_addr.addrlen;
 
   /* receive payload */
   msg_iovec.iov_base = msg_payload;
