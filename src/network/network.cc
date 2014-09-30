@@ -505,9 +505,9 @@ ssize_t Connection::sendfromto( int sock, const char *buffer, size_t size, int f
 {
   struct msghdr msghdr;
   struct cmsghdr *cmsghdr;
-  struct in6_pktinfo *info;
   struct iovec iov;
   char cmsg[256];
+  const int family = to.sa.sa_family;
 
   iov.iov_base = (void*) buffer;
   iov.iov_len = size;
@@ -523,14 +523,48 @@ ssize_t Connection::sendfromto( int sock, const char *buffer, size_t size, int f
   /* fill message control */
   cmsghdr = (struct cmsghdr *)cmsg;
   memset( cmsghdr, 0, sizeof( *cmsghdr ) );
-  cmsghdr->cmsg_level = IPPROTO_IPV6;
-  cmsghdr->cmsg_type = IPV6_PKTINFO;
-  cmsghdr->cmsg_len = CMSG_LEN( sizeof( *info ) );
-  info = (struct in6_pktinfo *)CMSG_DATA( cmsghdr );
-  memset( info, 0, sizeof( *info ) );
-  memcpy( &info->ipi6_addr, &from.sin6.sin6_addr, sizeof( from.sin6.sin6_addr ) );
-  msghdr.msg_controllen += CMSG_SPACE( sizeof( *info ) );
+  if ( family == AF_INET ) {
 
+#ifdef IP_PKTINFO
+    struct in_pktinfo *info;
+    cmsghdr->cmsg_level = IPPROTO_IP;
+    cmsghdr->cmsg_type = IP_PKTINFO;
+    cmsghdr->cmsg_len = CMSG_LEN( sizeof( *info ) );
+    info = (struct in_pktinfo *)CMSG_DATA( cmsghdr );
+    memset( info, 0, sizeof( *info ) );
+    info->ipi_spec_dst = from.sin.sin_addr;
+    msghdr.msg_controllen += CMSG_SPACE( sizeof( *info ) );
+
+#elif defined IP_SENDSRCADDR
+    struct in_addr *info;
+    cmsghdr->cmsg_level = IPPROTO_IP;
+    cmsghdr->cmsg_type = IP_SENDSRCADDR;
+    cmsghdr->cmsg_len = CMSG_LEN( sizeof( *info ) );
+    info = (struct in_addr *)CMSG_DATA( cmsghdr );
+    *info = from.sin.sin_addr;
+    msghdr.msg_controllen += CMSG_SPACE( sizeof( *info ) );
+
+#else
+#warning "Can't choose the source address of outgoing packets."
+#endif
+
+  } else if ( family == AF_INET6 ) {
+    struct in6_pktinfo *info;
+    cmsghdr->cmsg_level = IPPROTO_IPV6;
+    cmsghdr->cmsg_type = IPV6_PKTINFO;
+    cmsghdr->cmsg_len = CMSG_LEN( sizeof( *info ) );
+    info = (struct in6_pktinfo *)CMSG_DATA( cmsghdr );
+    memset( info, 0, sizeof( *info ) );
+    memcpy( &info->ipi6_addr, &from.sin6.sin6_addr, sizeof( from.sin6.sin6_addr ) );
+    msghdr.msg_controllen += CMSG_SPACE( sizeof( *info ) );
+
+  } else {
+    assert( false );
+  }
+
+  if ( msghdr.msg_controllen == 0 ) {
+    msghdr.msg_control = NULL;
+  }
   /* send the message ! */
   return sendmsg( sock, &msghdr, flags );
 }
