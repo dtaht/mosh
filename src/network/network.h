@@ -154,7 +154,7 @@ namespace Network {
 
     public:
       int fd( void ) const { return _fd; }
-      Socket();
+      Socket( int family );
       ~Socket();
 
       Socket( const Socket & other );
@@ -162,6 +162,7 @@ namespace Network {
     };
 
     std::deque< Socket > socks;
+    std::deque< Socket > socks6;
     bool has_remote_addr;
     Addr remote_addr;
     std::map< struct flow_key, Flow* > flows;
@@ -192,13 +193,15 @@ namespace Network {
     void hop_port( void );
 
     int sock( void ) const { assert( !socks.empty() ); return socks.back().fd(); }
+    int sock6( void ) const { assert( !socks6.empty() ); return socks6.back().fd(); }
 
     void prune_sockets( void );
+    void prune_sockets( std::deque< Socket > &socks_vect );
 
     void send_probes( void );
     bool send_probe( const struct flow_key &flow_key, Flow *flow );
     ssize_t sendfromto( int sock, const char *buffer, size_t size, int flags, Addr from, Addr to );
-    string recv_one( int sock_to_recv, bool nonblocking );
+    string recv_one( int sock_to_recv );
 
   public:
     Connection( const char *desired_ip, const char *desired_port ); /* server */

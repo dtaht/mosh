@@ -143,19 +143,25 @@ void Connection::hop_port( void )
 
   setup();
   assert( remote_addr.addrlen != 0 );
-  socks.push_back( Socket() );
+  socks.push_back( Socket( PF_INET ) );
+  socks6.push_back( Socket( PF_INET6 ) );
 
   prune_sockets();
 }
 
-void Connection::prune_sockets( void )
+void Connection::prune_sockets( void ) {
+  prune_sockets( socks );
+  prune_sockets( socks6 );
+}
+
+void Connection::prune_sockets( std::deque< Socket > &socks_queue )
 {
   /* don't keep old sockets if the new socket has been working for long enough */
-  if ( socks.size() > 1 ) {
+  if ( socks_queue.size() > 1 ) {
     if ( timestamp() - last_port_choice > MAX_OLD_SOCKET_AGE ) {
-      int num_to_kill = socks.size() - 1;
+      int num_to_kill = socks_queue.size() - 1;
       for ( int i = 0; i < num_to_kill; i++ ) {
-	socks.pop_front();
+	socks_queue.pop_front();
       }
     }
   } else {
@@ -163,10 +169,10 @@ void Connection::prune_sockets( void )
   }
 
   /* make sure we don't have too many receive sockets open */
-  if ( socks.size() > MAX_PORTS_OPEN ) {
-    int num_to_kill = socks.size() - MAX_PORTS_OPEN;
+  if ( socks_queue.size() > MAX_PORTS_OPEN ) {
+    int num_to_kill = socks_queue.size() - MAX_PORTS_OPEN;
     for ( int i = 0; i < num_to_kill; i++ ) {
-      socks.pop_front();
+      socks_queue.pop_front();
     }
   }
 }
@@ -190,29 +196,66 @@ Connection::Flow::Flow( void )
   }
 }
 
-Connection::Socket::Socket( void )
-  : _fd( socket( PF_INET6, SOCK_DGRAM, 0 ) )
+Connection::Socket::Socket( int family )
+  : _fd( socket( family, SOCK_DGRAM, 0 ) )
 {
   if ( _fd < 0 ) {
     throw NetworkException( "socket", errno );
   }
 
   const int on = 1;
-  const int off = 0;
 
-  /* Hybrid socket. */
-  if ( setsockopt( _fd, IPPROTO_IPV6, IPV6_V6ONLY, &off, sizeof( off ) ) < 0 ) {
-    throw NetworkException( "setsockopt( IPV6_V6ONLY off )", errno );
-  }
+  if ( family == PF_INET ) {
+#ifdef HAVE_IP_MTU_DISCOVER
+    int flag = IP_PMTUDISC_DONT;
+    socklen_t optlen = sizeof( flag );
+    if ( setsockopt( _fd, IPPROTO_IP, IP_MTU_DISCOVER, &flag, optlen ) < 0 ) {
+      throw NetworkException( "setsockopt( MTU )", errno );
+    }
+#endif
 
-  /* request explicit congestion notification on received datagrams */
-  if ( setsockopt( _fd, IPPROTO_IPV6, IPV6_RECVTCLASS, &on, sizeof( on ) ) < 0 ) {
-    perror( "setsockopt( IPV6_RECVTCLASS on )" );
-  }
+    int dscp = 0x02; /* ECN-capable transport only */
+    if ( setsockopt( _fd, IPPROTO_IP, IP_TOS, &dscp, sizeof( dscp )) < 0 ) {
+      //    perror( "setsockopt( IP_TOS )" );
+    }
 
-  /* Tell me on which address the msg has been received. */
-  if ( setsockopt( _fd, IPPROTO_IPV6, IPV6_RECVPKTINFO, &on, sizeof( on ) ) ) {
-    perror( "setsockopt( IPV6_RECVPKTINFO on )" );
+#ifdef HAVE_IP_RECVTOS
+    socklen_t tosoptlen = sizeof( tosflag );
+    if ( setsockopt( _fd, IPPROTO_IP, IP_RECVTOS, &on, sizeof( on ) ) < 0 ) {
+      perror( "setsockopt( IP_RECVTOS )" );
+    }
+#endif
+
+    /* Tell me on which address the msg has been received. */
+#ifdef IP_PKTINFO
+    if ( setsockopt( _fd, IPPROTO_IP, IP_PKTINFO, &on, sizeof( on ) ) < 0 ) {
+      throw NetworkException( "setsockopt( IP_PKTINFO )", errno );
+    }
+#elif defined IP_RECVDSTADDR
+    if ( setsockopt( _fd, IPPROTO_IP, IP_RECVDSTADDR, &on, sizeof( on ) ) < 0 ) {
+      throw NetworkException( "setsockopt( IP_RECVDSTADDR )", errno );
+    }
+#else
+#warning "Can't get my local address on packet reception."
+#endif
+
+  } else if (family == PF_INET6 ) {
+    /* No hybrid socket. */
+    if ( setsockopt( _fd, IPPROTO_IPV6, IPV6_V6ONLY, &on, sizeof( on ) ) < 0 ) {
+      throw NetworkException( "setsockopt( IPV6_V6ONLY off )", errno );
+    }
+
+    /* request explicit congestion notification on received datagrams */
+    if ( setsockopt( _fd, IPPROTO_IPV6, IPV6_RECVTCLASS, &on, sizeof( on ) ) < 0 ) {
+      perror( "setsockopt( IPV6_RECVTCLASS on )" );
+    }
+
+    /* Tell me on which address the msg has been received. */
+    if ( setsockopt( _fd, IPPROTO_IPV6, IPV6_RECVPKTINFO, &on, sizeof( on ) ) ) {
+      perror( "setsockopt( IPV6_RECVPKTINFO on )" );
+    }
+  } else {
+    throw NetworkException( "Unknown protocol family", 0 );
   }
 }
 
@@ -227,6 +270,12 @@ const std::vector< int > Connection::fds( void ) const
 
   for ( std::deque< Socket >::const_iterator it = socks.begin();
 	it != socks.end();
+	it++ ) {
+    ret.push_back( it->fd() );
+  }
+
+  for ( std::deque< Socket >::const_iterator it = socks6.begin();
+	it != socks6.end();
 	it++ ) {
     ret.push_back( it->fd() );
   }
@@ -253,6 +302,7 @@ private:
 
 Connection::Connection( const char *desired_ip, const char *desired_port ) /* server */
   : socks(),
+    socks6(),
     has_remote_addr( false ),
     remote_addr(),
     flows(),
@@ -307,7 +357,8 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
 
 bool Connection::try_bind( int port_low, int port_high )
 {
-  Addr local_addr( AF_INET6 );
+  Addr local_addr( AF_INET );
+  Addr local_addr6( AF_INET6 );
 
   int search_low = PORT_RANGE_LOW, search_high = PORT_RANGE_HIGH;
 
@@ -318,15 +369,25 @@ bool Connection::try_bind( int port_low, int port_high )
     search_high = port_high;
   }
 
-  socks.push_back( Socket() );
+  socks.push_back( Socket( PF_INET ) );
+  socks6.push_back( Socket( PF_INET6 ) );
+
   for ( int i = search_low; i <= search_high; i++ ) {
-    local_addr.sin6.sin6_port = htons( i );
+    local_addr.sin.sin_port = htons( i );
+    local_addr6.sin6.sin6_port = htons( i );
 
     if ( bind( sock(), &local_addr.sa, local_addr.addrlen ) == 0 ) {
-      return true;
-    } else if ( i == search_high ) { /* last port to search */
+      if ( bind( sock6(), &local_addr6.sa, local_addr6.addrlen ) == 0 ) {
+	return true;
+      } else {
+	socks.pop_back(); /* such that v4 and v6 server have the same port number.  (This may not be necessary.) */
+	socks.push_back( Socket( PF_INET ) );
+      }
+    }
+    if ( i == search_high ) { /* last port to search */
       int saved_errno = errno;
       socks.pop_back();
+      socks6.pop_back();
       char host[ NI_MAXHOST ], serv[ NI_MAXSERV ];
       int errcode = getnameinfo( &local_addr.sa, local_addr.addrlen,
 				 host, sizeof( host ), serv, sizeof( serv ),
@@ -346,6 +407,7 @@ bool Connection::try_bind( int port_low, int port_high )
 
 Connection::Connection( const char *key_str, const char *ip, const char *port ) /* client */
   : socks(),
+    socks6(),
     has_remote_addr( false ),
     remote_addr(),
     flows(),
@@ -399,7 +461,8 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
     }
   }
 
-  socks.push_back( Socket() );
+  socks.push_back( Socket( PF_INET ) );
+  socks6.push_back( Socket( PF_INET6 ) );
 
   send_probes(); /* This should check all flows. */
 }
@@ -426,7 +489,8 @@ bool Connection::send_probe( const struct flow_key &flow_key, Flow *flow )
   log_dbg( LOG_DEBUG_COMMON, "Sending probe: %s -> %s: ",
            flow_key.src.tostring().c_str(), flow_key.dst.tostring().c_str() );
 
-  ssize_t bytes_sent = sendfromto( sock(), p.data(), p.size(), MSG_DONTWAIT, flow_key.src, flow_key.dst );
+  ssize_t bytes_sent = sendfromto( flow_key.dst.sa.sa_family == AF_INET ? sock() : sock6(),
+				   p.data(), p.size(), MSG_DONTWAIT, flow_key.src, flow_key.dst );
   if ( bytes_sent < 0 ) {
     flow->SRTT = MIN( flow->SRTT + 1000, 10000);
     log_dbg( LOG_PERROR, "failed (SRTT = %dms)", (int)flow->SRTT );
@@ -444,9 +508,6 @@ ssize_t Connection::sendfromto( int sock, const char *buffer, size_t size, int f
   struct in6_pktinfo *info;
   struct iovec iov;
   char cmsg[256];
-
-  from.to_v4mapped();
-  to.to_v4mapped();
 
   iov.iov_base = (void*) buffer;
   iov.iov_len = size;
@@ -489,7 +550,8 @@ void Connection::send( string s )
 
     string p = px.tostring( &session );
 
-    bytes_sent = sendfromto( sock(), p.data(), p.size(), MSG_DONTWAIT, last_flow_key.src, last_flow_key.dst );
+    bytes_sent = sendfromto( last_flow_key.dst.sa.sa_family == AF_INET ? sock() : sock6(),
+			     p.data(), p.size(), MSG_DONTWAIT, last_flow_key.src, last_flow_key.dst );
     if ( bytes_sent == static_cast<ssize_t>( p.size() ) ) {
       have_send_exception = false;
       log_dbg( LOG_DEBUG_COMMON, ": done (%s -> %s).\n",
@@ -505,7 +567,8 @@ void Connection::send( string s )
       string p = px.tostring( &session );
       log_dbg( LOG_DEBUG_COMMON, "    %s -> %s ",
 	       it->first.src.tostring().c_str(), it->first.dst.tostring().c_str() );
-      bytes_sent = sendfromto( sock(), p.data(), p.size(), MSG_DONTWAIT, it->first.src, it->first.dst );
+      bytes_sent = sendfromto( it->first.dst.sa.sa_family == AF_INET ? sock() : sock6(),
+			       p.data(), p.size(), MSG_DONTWAIT, it->first.src, it->first.dst );
       if ( bytes_sent < 0 ) {
 	it->second->SRTT = MIN( it->second->SRTT + 1000, 10000);
  	log_dbg( LOG_PERROR, "(failed (SRTT = %dms))", (int)it->second->SRTT );
@@ -525,7 +588,8 @@ void Connection::send( string s )
 	  it ++ ) {
       Packet px = new_packet( it->second, 0, s );
       string p = px.tostring( &session );
-      bytes_sent = sendfromto( sock(), p.data(), p.size(), MSG_DONTWAIT, it->first.src, it->first.dst );
+      bytes_sent = sendfromto( it->first.dst.sa.sa_family == AF_INET ? sock() : sock6(),
+			       p.data(), p.size(), MSG_DONTWAIT, it->first.src, it->first.dst );
       if ( bytes_sent < 0 ) {
 	it->second->SRTT = MIN( it->second->SRTT + 1000, 10000);
       } else if ( bytes_sent == static_cast<ssize_t>( p.size() ) ){
@@ -574,18 +638,21 @@ void Connection::send( string s )
 
 string Connection::recv( void )
 {
-  assert( !socks.empty() );
-  for ( std::deque< Socket >::const_iterator it = socks.begin();
-	it != socks.end();
-	it++ ) {
-    bool islast = (it + 1) == socks.end();
+  assert( !socks.empty() && !socks6.empty() );
+  std::deque< Socket >::const_iterator it = socks.begin();
+  while ( true ) {
+    if ( it == socks.end() ) {
+      it = socks6.begin();
+    } else if ( it == socks6.end() ) {
+      break;
+    }
+
     string payload;
     try {
-      payload = recv_one( it->fd(), !islast );
+      payload = recv_one( it->fd() );
     } catch ( NetworkException & e ) {
       if ( (e.the_errno == EAGAIN)
 	   || (e.the_errno == EWOULDBLOCK) ) {
-	assert( !islast );
 	continue;
       } else {
 	throw;
@@ -600,7 +667,7 @@ string Connection::recv( void )
   return "";
 }
 
-string Connection::recv_one( int sock_to_recv, bool nonblocking )
+string Connection::recv_one( int sock_to_recv )
 {
   /* receive source address, ECN, and payload in msghdr structure */
   Addr packet_remote_addr;
@@ -628,7 +695,7 @@ string Connection::recv_one( int sock_to_recv, bool nonblocking )
   /* receive flags */
   header.msg_flags = 0;
 
-  ssize_t received_len = recvmsg( sock_to_recv, &header, nonblocking ? MSG_DONTWAIT : 0 );
+  ssize_t received_len = recvmsg( sock_to_recv, &header, MSG_DONTWAIT );
 
   if ( received_len < 0 ) {
     throw NetworkException( "recvmsg", errno );
@@ -666,8 +733,6 @@ string Connection::recv_one( int sock_to_recv, bool nonblocking )
   }
 
   packet_remote_addr.addrlen = header.msg_namelen;
-  packet_remote_addr.to_v4form();
-  packet_local_addr.to_v4form();
   struct flow_key flow_key( packet_local_addr, packet_remote_addr );
   Flow *flow_info = flows[ flow_key ];
   log_dbg( LOG_DEBUG_COMMON, "Message received on %sflow (%s <- %s): ", flow_info ? "" : "new ",
@@ -767,6 +832,7 @@ std::string Connection::port( void ) const
   Addr local_addr;
   socklen_t addrlen = sizeof( local_addr );
 
+  /* Remark that sock && sock6 are bound at the same port number. */
   if ( getsockname( sock(), &local_addr.sa, &addrlen ) < 0 ) {
     throw NetworkException( "getsockname", errno );
   }
