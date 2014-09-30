@@ -701,8 +701,8 @@ string Connection::recv( void )
 string Connection::recv_one( int sock_to_recv )
 {
   /* receive source address, ECN, and payload in msghdr structure */
-  Addr packet_remote_addr;
-  Addr packet_local_addr;
+  Addr packet_remote_addr; /* == src of the IP packet */
+  Addr packet_local_addr;  /* == dst of the IP packet */
   struct msghdr header;
   struct iovec msg_iovec;
 
@@ -741,15 +741,28 @@ string Connection::recv_one( int sock_to_recv )
 
   struct cmsghdr *cmsghdr;
   for ( cmsghdr = CMSG_FIRSTHDR( &header ); cmsghdr != NULL; cmsghdr = CMSG_NXTHDR( &header, cmsghdr ) ) {
-    if ( (cmsghdr->cmsg_level == IPPROTO_IP)
-	 && (cmsghdr->cmsg_type == IP_TOS) ) {
-      uint8_t *ecn_octet_p = (uint8_t *)CMSG_DATA( cmsghdr );
-      assert( ecn_octet_p );
+    if ( cmsghdr->cmsg_level == IPPROTO_IP ) {
+      if ( cmsghdr->cmsg_type == IP_TOS ) {
+	uint8_t *ecn_octet_p = (uint8_t *)CMSG_DATA( cmsghdr );
+	assert( ecn_octet_p );
+	if ( (*ecn_octet_p & 0x03) == 0x03 ) {
+	  congestion_experienced = true;
+	}
 
-      if ( (*ecn_octet_p & 0x03) == 0x03 ) {
-	congestion_experienced = true;
+#ifdef IP_PKTINFO
+      } else if ( cmsghdr->cmsg_type == IP_PKTINFO ) {
+	struct in_pktinfo *info = (struct in_pktinfo *)CMSG_DATA( cmsghdr );
+	packet_local_addr.sin.sin_addr = info->ipi_addr;
+	packet_local_addr.sin.sin_family = AF_INET;
+
+#elif defined IP_RECVDSTADDR
+      } else if ( cmsghdr->cmsg_type == IP_RECVDSTADDR ) {
+	struct in_addr *info = (struct in_addr *)CMSG_DATA( cmsghdr );
+	packet_local_addr.sin.sin_addr = *info;
+	packet_local_addr.sin.sin_family = AF_INET;
+
+#endif
       }
-
     } else if ( cmsghdr->cmsg_level == IPPROTO_IPV6 ) {
       if ( cmsghdr->cmsg_type == IPV6_PKTINFO ) {
 	struct in6_pktinfo *info = (struct in6_pktinfo *)CMSG_DATA( cmsghdr );
