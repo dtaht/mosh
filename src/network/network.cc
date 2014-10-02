@@ -563,6 +563,9 @@ ssize_t Connection::sendfromto( int sock, const char *buffer, size_t size, int f
     assert( false );
   }
 
+  if ( msghdr.msg_controllen == 0 ) {
+    msghdr.msg_control = NULL;
+  }
   /* send the message ! */
   return sendmsg( sock, &msghdr, flags );
 }
