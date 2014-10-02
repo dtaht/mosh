@@ -220,7 +220,6 @@ Connection::Socket::Socket( int family )
     }
 
 #ifdef HAVE_IP_RECVTOS
-    socklen_t tosoptlen = sizeof( tosflag );
     if ( setsockopt( _fd, IPPROTO_IP, IP_RECVTOS, &on, sizeof( on ) ) < 0 ) {
       perror( "setsockopt( IP_RECVTOS )" );
     }
