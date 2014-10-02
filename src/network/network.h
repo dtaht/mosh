@@ -137,7 +137,7 @@ namespace Network {
       bool RTT_hit;
       double SRTT;
       double RTTVAR;
-      uint16_t flow_id; /* TODO: will be used in the nonce to avoid out-of-order packets */
+      uint16_t flow_id;
 
       static bool srtt_order( std::pair< struct flow_key, Flow* > const &f1,
 			      std::pair< struct flow_key, Flow* > const &f2 ) {
