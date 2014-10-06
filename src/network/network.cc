@@ -179,10 +179,12 @@ void Connection::prune_sockets( std::deque< Socket > &socks_queue )
 }
 
 uint16_t Connection::Flow::next_flow_id = 0;
-const Connection::Flow Connection::Flow::defaults = Flow( true );
+const Connection::Flow Connection::Flow::defaults;
 
-Connection::Flow::Flow( void )
-  : MTU( defaults.MTU ),
+Connection::Flow::Flow( const Addr &s_src, const Addr &s_dst )
+  : src( s_src ),
+    dst( s_dst ),
+    MTU( defaults.MTU ),
     next_seq( defaults.next_seq ),
     expected_receiver_seq( defaults.expected_receiver_seq ),
     saved_timestamp( defaults.saved_timestamp ),
@@ -196,6 +198,22 @@ Connection::Flow::Flow( void )
     fprintf( stderr, "Max flow ID reached, exit before nonce be corrupted\n." );
     throw;
   }
+}
+
+Connection::Flow::Flow( const Addr &s_src, const Addr &s_dst, uint16_t id )
+  : src( s_src ),
+    dst( s_dst ),
+    MTU( defaults.MTU ),
+    next_seq( defaults.next_seq ),
+    expected_receiver_seq( defaults.expected_receiver_seq ),
+    saved_timestamp( defaults.saved_timestamp ),
+    saved_timestamp_received_at( defaults.saved_timestamp_received_at ),
+    RTT_hit( defaults.RTT_hit ),
+    SRTT( defaults.SRTT ),
+    RTTVAR( defaults.RTTVAR ),
+    flow_id( id )
+{
+  assert( !next_flow_id ); /* The server should not have initialized any flow. */
 }
 
 Connection::Socket::Socket( int family )
@@ -307,7 +325,6 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
     has_remote_addr( false ),
     remote_addr(),
     flows(),
-    last_flow_key( Addr(), Addr() ),
     last_flow( NULL ),
     host_addresses(),
     server( true ),
@@ -412,7 +429,6 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
     has_remote_addr( false ),
     remote_addr(),
     flows(),
-    last_flow_key( Addr(), Addr() ),
     last_flow( NULL ),
     host_addresses(),
     server( false ),
@@ -451,12 +467,8 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
 	la_it++ ) {
     for ( struct addrinfo *ra_it = ai.res; ra_it != NULL; ra_it = ra_it->ai_next ) {
       if ( la_it->sa.sa_family == AF_UNSPEC || la_it->sa.sa_family == ra_it->ai_addr->sa_family ) {
-	struct flow_key flow_key( *la_it, Addr( *ra_it->ai_addr, ra_it->ai_addrlen ) );
-	Flow *flow_info = flows[ flow_key ];
-	if ( !flow_info ) { /* should be always true at this point. */
-	  flow_info = new Flow();
-	  flows[ flow_key ] = flow_info;
-	}
+	Flow *flow_info = new Flow( *la_it, Addr( *ra_it->ai_addr, ra_it->ai_addrlen ) );
+	flows[ flow_info->flow_id ] = flow_info;
       }
     }
   }
@@ -470,16 +482,16 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
 void Connection::send_probes( void )
 {
   assert( !server );
-  for ( std::map< struct flow_key, Flow* >::iterator it = flows.begin();
+  for ( std::map< uint16_t, Flow* >::iterator it = flows.begin();
 	it != flows.end();
 	it++ ) {
     if ( it->second != last_flow ) {
-      send_probe( it->first, it->second );
+      send_probe( it->second );
     }
   }
 }
 
-bool Connection::send_probe( const struct flow_key &flow_key, Flow *flow )
+bool Connection::send_probe( Flow *flow )
 {
   string empty("");
   Packet px = new_packet( flow, PROBE_FLAG, empty );
@@ -487,10 +499,10 @@ bool Connection::send_probe( const struct flow_key &flow_key, Flow *flow )
   string p = px.tostring( &session );
 
   log_dbg( LOG_DEBUG_COMMON, "Sending probe: %s -> %s: ",
-           flow_key.src.tostring().c_str(), flow_key.dst.tostring().c_str() );
+           flow->src.tostring().c_str(), flow->dst.tostring().c_str() );
 
-  ssize_t bytes_sent = sendfromto( flow_key.dst.sa.sa_family == AF_INET ? sock() : sock6(),
-				   p.data(), p.size(), MSG_DONTWAIT, flow_key.src, flow_key.dst );
+  ssize_t bytes_sent = sendfromto( flow->dst.sa.sa_family == AF_INET ? sock() : sock6(),
+				   p.data(), p.size(), MSG_DONTWAIT, flow->src, flow->dst );
   if ( bytes_sent < 0 ) {
     flow->SRTT = MIN( flow->SRTT + 1000, 10000);
     log_dbg( LOG_PERROR, "failed (SRTT = %dms)", (int)flow->SRTT );
@@ -586,25 +598,25 @@ void Connection::send( string s )
 
     string p = px.tostring( &session );
 
-    bytes_sent = sendfromto( last_flow_key.dst.sa.sa_family == AF_INET ? sock() : sock6(),
-			     p.data(), p.size(), MSG_DONTWAIT, last_flow_key.src, last_flow_key.dst );
+    bytes_sent = sendfromto( last_flow->dst.sa.sa_family == AF_INET ? sock() : sock6(),
+			     p.data(), p.size(), MSG_DONTWAIT, last_flow->src, last_flow->dst );
     if ( bytes_sent == static_cast<ssize_t>( p.size() ) ) {
       have_send_exception = false;
       log_dbg( LOG_DEBUG_COMMON, ": done (%s -> %s).\n",
-	       last_flow_key.src.tostring().c_str(), last_flow_key.dst.tostring().c_str() );
+	       last_flow->src.tostring().c_str(), last_flow->dst.tostring().c_str() );
     }
 
   } else if ( UNLIKELY( last_flow == NULL ) ) { /* First send. */
     log_dbg( LOG_DEBUG_COMMON, " to all our addresses (first send):\n");
-    for ( std::map< struct flow_key, Flow* >::iterator it = flows.begin();
+    for ( std::map< uint16_t, Flow* >::iterator it = flows.begin();
 	  it != flows.end();
 	  it++ ) {
       Packet px = new_packet( it->second, 0, s );
       string p = px.tostring( &session );
       log_dbg( LOG_DEBUG_COMMON, "    %s -> %s ",
-	       it->first.src.tostring().c_str(), it->first.dst.tostring().c_str() );
-      bytes_sent = sendfromto( it->first.dst.sa.sa_family == AF_INET ? sock() : sock6(),
-			       p.data(), p.size(), MSG_DONTWAIT, it->first.src, it->first.dst );
+	       it->second->src.tostring().c_str(), it->second->dst.tostring().c_str() );
+      bytes_sent = sendfromto( it->second->dst.sa.sa_family == AF_INET ? sock() : sock6(),
+			       p.data(), p.size(), MSG_DONTWAIT, it->second->src, it->second->dst );
       if ( bytes_sent < 0 ) {
 	it->second->SRTT = MIN( it->second->SRTT + 1000, 10000);
 	if ( errno == EMSGSIZE ) {
@@ -614,21 +626,20 @@ void Connection::send( string s )
       } else if ( bytes_sent == static_cast<ssize_t>( p.size() ) ) {
 	have_send_exception = false;
 	log_dbg( LOG_DEBUG_COMMON, "(success).\n" );
-	last_flow_key = it->first;
 	last_flow = it->second;
       }
     }
 
   } else {
-    std::vector< std::pair< struct flow_key, Flow* > > flows_vect( flows.begin(), flows.end() );
+    std::vector< std::pair< uint16_t, Flow* > > flows_vect( flows.begin(), flows.end() );
     std::sort( flows_vect.begin(), flows_vect.end(), Flow::srtt_order );
-    for ( std::vector< std::pair< struct flow_key, Flow* > >::const_iterator it = flows_vect.begin();
+    for ( std::vector< std::pair< uint16_t, Flow* > >::const_iterator it = flows_vect.begin();
 	  it != flows_vect.end();
 	  it ++ ) {
       Packet px = new_packet( it->second, 0, s );
       string p = px.tostring( &session );
-      bytes_sent = sendfromto( it->first.dst.sa.sa_family == AF_INET ? sock() : sock6(),
-			       p.data(), p.size(), MSG_DONTWAIT, it->first.src, it->first.dst );
+      bytes_sent = sendfromto( it->second->dst.sa.sa_family == AF_INET ? sock() : sock6(),
+			       p.data(), p.size(), MSG_DONTWAIT, it->second->src, it->second->dst );
       if ( bytes_sent < 0 ) {
 	it->second->SRTT = MIN( it->second->SRTT + 1000, 10000);
 	if ( errno == EMSGSIZE ) {
@@ -638,9 +649,8 @@ void Connection::send( string s )
 	have_send_exception = false;
 	if ( last_flow != it->second ) {
 	  log_dbg( LOG_DEBUG_COMMON, ": done by switching to (%s -> %s, SRTT = %dms) [was (%s -> %s, SRTT = %dms)].\n",
-		   it->first.src.tostring().c_str(), it->first.dst.tostring().c_str(), (int)it->second->SRTT,
-		   last_flow_key.src.tostring().c_str(), last_flow_key.dst.tostring().c_str(), (int)last_flow->SRTT );
-	  last_flow_key = it->first;
+		   it->second->src.tostring().c_str(), it->second->dst.tostring().c_str(), (int)it->second->SRTT,
+		   last_flow->src.tostring().c_str(), last_flow->dst.tostring().c_str(), (int)last_flow->SRTT );
 	  last_flow = it->second;
 	} else {
 	  log_dbg( LOG_DEBUG_COMMON, ": success (SRTT = %dms).\n", (int)it->second->SRTT );
@@ -783,16 +793,22 @@ string Connection::recv_one( int sock_to_recv )
   }
 
   packet_remote_addr.addrlen = header.msg_namelen;
-  struct flow_key flow_key( packet_local_addr, packet_remote_addr );
-  Flow *flow_info = flows[ flow_key ];
-  log_dbg( LOG_DEBUG_COMMON, "Message received on %sflow (%s <- %s): ", flow_info ? "" : "new ",
-	   packet_local_addr.tostring().c_str(), packet_remote_addr.tostring().c_str() );
-  if ( !flow_info ) {
-    flow_info = new Flow();
-    flows[ flow_key ] = flow_info;
-  }
 
   Packet p( string( msg_payload, received_len ), &session );
+
+  Flow *flow_info = flows[ p.flow_id ];
+  log_dbg( LOG_DEBUG_COMMON, "Message received on %sflow %hu (%s <- %s): ", flow_info ? "" : "new ", p.flow_id,
+	   packet_local_addr.tostring().c_str(), packet_remote_addr.tostring().c_str() );
+  if ( !flow_info ) {
+    fatal_assert( server ); /* if client, then server answers with an unknown flow ID. This is terrific. */
+    flow_info = new Flow( packet_local_addr, packet_remote_addr, p.flow_id );
+    flows[ p.flow_id ] = flow_info;
+  } else if ( server ) {
+    /* the destination may change, especially when client hop port.  Not sure
+       about the source, but anyway... */
+    flow_info->src = packet_local_addr;
+    flow_info->dst = packet_remote_addr;
+  }
 
   dos_assert( p.direction == (server ? TO_SERVER : TO_CLIENT) ); /* prevent malicious playback to sender */
 
@@ -849,13 +865,11 @@ string Connection::recv_one( int sock_to_recv )
     if ( server ) { /* only client can roam */
       if ( p.is_probe() ) {
 	if ( UNLIKELY( !last_flow ) ) { /* This should only occurs once. */
-	  last_flow_key = flow_key;
 	  last_flow = flow_info;
 	}
-	send_probe( flow_key, flow_info );
+	send_probe( flow_info );
 	return p.payload;
       }
-      last_flow_key = flow_key;
       last_flow = flow_info;
 
       if ( (socklen_t)remote_addr.addrlen != header.msg_namelen ||
