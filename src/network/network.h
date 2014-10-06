@@ -110,25 +110,12 @@ namespace Network {
 
     bool try_bind( int port_low, int port_high );
 
-    struct flow_key {
-      Addr src;
-      Addr dst;
-
-      flow_key( Addr s_src, Addr s_dst ) : src( s_src ), dst( s_dst ) {}
-
-      bool operator<( const struct flow_key &k ) const {
-	int cmp = src.compare( k.src );
-	if ( cmp != 0 ) {
-	  return cmp < 0;
-	}
-	return dst < k.dst;
-      }
-    };
-
     class Flow {
     private:
       static uint16_t next_flow_id;
     public:
+      Addr src;
+      Addr dst;
       int MTU;
       uint64_t next_seq;
       uint64_t expected_receiver_seq;
@@ -137,14 +124,15 @@ namespace Network {
       bool RTT_hit;
       double SRTT;
       double RTTVAR;
-      uint16_t flow_id;
+      const uint16_t flow_id;
 
-      static bool srtt_order( std::pair< struct flow_key, Flow* > const &f1,
-			      std::pair< struct flow_key, Flow* > const &f2 ) {
+      static bool srtt_order( std::pair< uint16_t, Flow* > const &f1,
+			      std::pair< uint16_t, Flow* > const &f2 ) {
 	return f1.second->SRTT < f2.second->SRTT;
       }
 
-      Flow( void );
+      Flow( const Addr &src, const Addr &dst ); /* client only */
+      Flow( const Addr &src, const Addr &dst, uint16_t id ); /* server only */
     };
 
     class Socket
@@ -165,8 +153,7 @@ namespace Network {
     std::deque< Socket > socks6;
     bool has_remote_addr;
     Addr remote_addr;
-    std::map< struct flow_key, Flow* > flows;
-    struct flow_key last_flow_key;
+    std::map< uint16_t, Flow* > flows;
     Flow *last_flow;
     Addresses host_addresses;
 
@@ -199,7 +186,7 @@ namespace Network {
     void prune_sockets( std::deque< Socket > &socks_vect );
 
     void send_probes( void );
-    bool send_probe( const struct flow_key &flow_key, Flow *flow );
+    bool send_probe( Flow *flow );
     ssize_t sendfromto( int sock, const char *buffer, size_t size, int flags, Addr from, Addr to );
     string recv_one( int sock_to_recv );
 
