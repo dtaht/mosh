@@ -768,7 +768,7 @@ void Connection::send( uint16_t flags, string s )
 		   sock->remote_addr.tostring().c_str(), (int)sock->SRTT );
 	  send_socket = sock;
 	} else {
-	  log_dbg( LOG_DEBUG_COMMON, ": done on %d (%s -> %s, SRTT-%dms).\n",
+	  log_dbg( LOG_DEBUG_COMMON, ": done on %d (%s -> %s, SRTT=%dms).\n",
 		   (int)send_socket->sock_id, send_socket->local_addr.tostring().c_str(),
 		   send_socket->remote_addr.tostring().c_str(), (int)send_socket->SRTT );
 	}
@@ -796,6 +796,7 @@ void Connection::send( uint16_t flags, string s )
 
   if ( last_heard < last_sent_message && now - last_sent_message < 2 * send_socket->SRTT ) {
     send_socket->SRTT = now - last_sent_message;
+    log_dbg( LOG_DEBUG_COMMON, "Connection seems lost, delaying SRTT to %dms\n", (int)send_socket->SRTT );
   }
 
   last_sent_message = now;
