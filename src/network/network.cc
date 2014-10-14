@@ -730,15 +730,18 @@ void Connection::send( uint16_t flags, string s )
     return;
   }
 
+  log_dbg( LOG_DEBUG_COMMON, "timestamp = %llu\n", timestamp() );
+
   Packet px = new_packet( send_socket, flags, s );
 
   string p = px.tostring( &session );
 
   ssize_t bytes_sent = -1;
 
+  log_dbg( LOG_DEBUG_COMMON, "Sending data" );
+
   if ( server ) {
     /* only send on the last heard socket. */
-    log_dbg( LOG_DEBUG_COMMON, "Sending data" );
     bytes_sent = sendto( send_socket->fd(), p.data(), p.size(), MSG_DONTWAIT,
 			 &send_socket->remote_addr.sa, send_socket->remote_addr.addrlen );
     if ( bytes_sent >= 0 ) {
@@ -747,7 +750,6 @@ void Connection::send( uint16_t flags, string s )
     }
   } else {
     std::sort( socks.begin(), socks.end(), Socket::srtt_order );
-    log_dbg( LOG_DEBUG_COMMON, "Sending data" );
     for ( std::deque< Socket* >::const_iterator it = socks.begin();
 	  it != socks.end();
 	  it++ ) {
@@ -766,8 +768,9 @@ void Connection::send( uint16_t flags, string s )
 		   sock->remote_addr.tostring().c_str(), (int)sock->SRTT );
 	  send_socket = sock;
 	} else {
-	  log_dbg( LOG_DEBUG_COMMON, ": done on %d (%s).\n",
-		   (int)send_socket->sock_id, send_socket->local_addr.tostring().c_str() );
+	  log_dbg( LOG_DEBUG_COMMON, ": done on %d (%s -> %s, SRTT-%dms).\n",
+		   (int)send_socket->sock_id, send_socket->local_addr.tostring().c_str(),
+		   send_socket->remote_addr.tostring().c_str(), (int)send_socket->SRTT );
 	}
 	break;
       }
@@ -891,6 +894,9 @@ string Connection::recv_one( Socket *sock, bool nonblocking )
 
   dos_assert( p.direction == (server ? TO_SERVER : TO_CLIENT) ); /* prevent malicious playback to sender */
 
+  log_dbg( LOG_DEBUG_COMMON, "Message received on socket %hu (%s <- %s): ", sock->sock_id,
+	   sock->local_addr.tostring().c_str(), sock->remote_addr.tostring().c_str() );
+
   if ( p.seq >= expected_receiver_seq[p.sock_id] ) { /* don't use out-of-order packets for timestamp or targeting */
     expected_receiver_seq[p.sock_id] = p.seq + 1; /* this is security-sensitive because a replay attack could otherwise
 						     screw up the timestamp and targeting */
@@ -911,6 +917,12 @@ string Connection::recv_one( Socket *sock, bool nonblocking )
       }
     }
 
+    if ( p.is_probe() ) {
+      log_dbg( LOG_DEBUG_COMMON, "probe, " );
+    } else {
+      log_dbg( LOG_DEBUG_COMMON, "data, " );
+    }
+
     if ( p.timestamp_reply != uint16_t(-1) ) {
       uint16_t now = timestamp16();
       double R = timestamp_diff( now, p.timestamp_reply );
@@ -928,10 +940,9 @@ string Connection::recv_one( Socket *sock, bool nonblocking )
 	  sock->SRTT = (1 - alpha) * sock->SRTT + ( alpha * R );
 	}
       }
-      if ( p.is_probe() ) {
-	log_dbg( LOG_DEBUG_COMMON, "Probe received on sock %d (%s), RTT=%u, SRTT=%u\n",
-		 (int) sock->sock_id, sock->local_addr.tostring().c_str(), (unsigned int)R, (unsigned int)sock->SRTT );
-      }
+      log_dbg( LOG_DEBUG_COMMON, "RTT = %ums, SRTT = %ums.\n", (unsigned int)R, (unsigned int)sock->SRTT );
+    } else {
+      log_dbg( LOG_DEBUG_COMMON, "no timestamp reply.\n" );
     }
 
     /* auto-adjust to remote host */
@@ -971,6 +982,8 @@ string Connection::recv_one( Socket *sock, bool nonblocking )
 	p.payload = string("");
       }
     }
+  } else {
+    log_dbg( LOG_DEBUG_COMMON, "out-of-order.\n" );
   }
 
   return p.payload; /* we do return out-of-order or duplicated packets to caller */
