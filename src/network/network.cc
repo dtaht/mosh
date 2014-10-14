@@ -793,6 +793,12 @@ void Connection::send( uint16_t flags, string s )
   }
 
   uint64_t now = timestamp();
+
+  if ( last_heard < last_sent_message && now - last_sent_message < 2 * send_socket->SRTT ) {
+    send_socket->SRTT = now - last_sent_message;
+  }
+
+  last_sent_message = now;
   if ( server ) {
     if ( now - last_heard > SERVER_ASSOCIATION_TIMEOUT ) {
       send_socket = NULL;
