@@ -713,8 +713,8 @@ bool Connection::send_probe( Socket *sock, Addr &addr )
 
   string p = px.tostring( &session );
 
-  log_dbg( LOG_DEBUG_COMMON, "Sending probe on %d (%s -> %s): ", (int)sock->sock_id,
-	   sock->local_addr.tostring().c_str(), addr.tostring().c_str() );
+  log_dbg( LOG_DEBUG_COMMON, "Sending probe on %d (%s -> %s, SRTT = %dms): ", (int)sock->sock_id,
+	   sock->local_addr.tostring().c_str(), addr.tostring().c_str(), (int)sock->SRTT );
 
   ssize_t bytes_sent = sendto( sock->fd(), p.data(), p.size(), MSG_DONTWAIT,
 			       &addr.sa, addr.addrlen );
@@ -734,7 +734,7 @@ void Connection::send( uint16_t flags, string s )
     return;
   }
 
-  log_dbg( LOG_DEBUG_COMMON, "timestamp = %llu\n", timestamp() );
+  log_dbg( LOG_DEBUG_COMMON, "timestamp = %llu\n", (long long unsigned)timestamp() );
 
   Packet px = new_packet( send_socket, flags, s );
 
@@ -749,8 +749,8 @@ void Connection::send( uint16_t flags, string s )
     bytes_sent = sendto( send_socket->fd(), p.data(), p.size(), MSG_DONTWAIT,
 			 &send_socket->remote_addr.sa, send_socket->remote_addr.addrlen );
     if ( bytes_sent >= 0 ) {
-      log_dbg( LOG_DEBUG_COMMON, ": done on %d (%s).\n",
-	       (int)send_socket->sock_id, send_socket->local_addr.tostring().c_str() );
+      log_dbg( LOG_DEBUG_COMMON, ": done on %d (%s, SRTT = %dms).\n",
+	       (int)send_socket->sock_id, send_socket->local_addr.tostring().c_str(), (int)send_socket->SRTT );
     }
   } else {
     std::sort( socks.begin(), socks.end(), Socket::srtt_order );
@@ -908,7 +908,7 @@ string Connection::recv_one( Socket *sock, bool nonblocking )
   dos_assert( p.direction == (server ? TO_SERVER : TO_CLIENT) ); /* prevent malicious playback to sender */
 
   log_dbg( LOG_DEBUG_COMMON, "Message received on socket %hu (%s <- %s): ", sock->sock_id,
-	   sock->local_addr.tostring().c_str(), sock->remote_addr.tostring().c_str() );
+	   sock->local_addr.tostring().c_str(), packet_remote_addr.tostring().c_str() );
 
   if ( p.seq >= expected_receiver_seq[p.sock_id] ) { /* don't use out-of-order packets for timestamp or targeting */
     expected_receiver_seq[p.sock_id] = p.seq + 1; /* this is security-sensitive because a replay attack could otherwise
