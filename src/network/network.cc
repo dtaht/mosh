@@ -436,6 +436,8 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
     expected_receiver_seq(),
     last_heard( -1 ),
     last_port_choice( -1 ),
+    last_addr_request( 0 ),
+    first_sent_message_since_reply( 0 ),
     have_send_exception( false ),
     send_exception()
 {
@@ -513,6 +515,8 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
     expected_receiver_seq(),
     last_heard( -1 ),
     last_port_choice( -1 ),
+    last_addr_request( 0 ),
+    first_sent_message_since_reply( 0 ),
     have_send_exception( false ),
     send_exception()
 {
@@ -794,12 +798,14 @@ void Connection::send( uint16_t flags, string s )
 
   uint64_t now = timestamp();
 
-  if ( last_heard < last_sent_message && now - last_sent_message < 2 * send_socket->SRTT ) {
-    send_socket->SRTT = now - last_sent_message;
+  /* This is to avoid having a non-increasing RTT when connection is lost.  This may probably be removed. */
+  if ( first_sent_message_since_reply <= last_heard ) {
+    first_sent_message_since_reply = now;
+  } else if ( 2 * send_socket->SRTT < now - first_sent_message_since_reply ) {
+    send_socket->SRTT = now - first_sent_message_since_reply;
     log_dbg( LOG_DEBUG_COMMON, "Connection seems lost, delaying SRTT to %dms\n", (int)send_socket->SRTT );
   }
 
-  last_sent_message = now;
   if ( server ) {
     if ( now - last_heard > SERVER_ASSOCIATION_TIMEOUT ) {
       send_socket = NULL;
