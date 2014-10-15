@@ -681,11 +681,11 @@ void Connection::parse_received_addresses( string payload )
     Addr tmp;
     uint8_t family = data[1];
     if ( family == 4 ) {
-      tmp.sa.sa_family = AF_INET;
+      tmp = Addr( AF_INET );
       memcpy(&tmp.sin.sin_port, data + 2, 2);
       memcpy(&tmp.sin.sin_addr, data + 4, 4);
     } else if ( family == 6 ) {
-      tmp.sa.sa_family = AF_INET6;
+      tmp = Addr( AF_INET6 );
       memcpy(&tmp.sin6.sin6_port, data + 2, 2);
       memcpy(&tmp.sin6.sin6_addr, data + 4, 16);
     }
