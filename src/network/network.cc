@@ -715,7 +715,8 @@ bool Connection::send_probe( Socket *sock, Addr &addr )
 
   string p = px.tostring( &session );
 
-  log_dbg( LOG_DEBUG_COMMON, "Sending probe on %d (%s -> %s, SRTT = %dms): ", (int)sock->sock_id,
+  log_dbg( LOG_DEBUG_COMMON, "Sending probe on %d seq %llu (%s -> %s, SRTT = %dms): ",
+	   (int)sock->sock_id, (long long unsigned)sock->next_seq - 1,
 	   sock->local_addr.tostring().c_str(), addr.tostring().c_str(), (int)sock->SRTT );
 
   ssize_t bytes_sent = sendto( sock->fd(), p.data(), p.size(), MSG_DONTWAIT,
@@ -740,19 +741,22 @@ void Connection::send( uint16_t flags, string s )
 
   ssize_t bytes_sent = -1;
 
-  log_dbg( LOG_DEBUG_COMMON, "Sending data" );
   have_send_exception = true;
 
   if ( server ) {
     Packet px = new_packet( send_socket, flags, s );
     string p = px.tostring( &session );
+    log_dbg( LOG_DEBUG_COMMON, "Sending data on %hu seq %llu (%s -> %s, SRTT = %dms)",
+	     send_socket->sock_id, send_socket->next_seq - 1, send_socket->local_addr.tostring().c_str(),
+	     send_socket->remote_addr.tostring().c_str(), (int)send_socket->SRTT );
     /* only send on the last heard socket. */
     bytes_sent = sendto( send_socket->fd(), p.data(), p.size(), MSG_DONTWAIT,
 			 &send_socket->remote_addr.sa, send_socket->remote_addr.addrlen );
     if ( bytes_sent == static_cast<ssize_t>( p.size() ) ) {
-      log_dbg( LOG_DEBUG_COMMON, ": done on %d (%s, SRTT = %dms).\n",
-	       (int)send_socket->sock_id, send_socket->local_addr.tostring().c_str(), (int)send_socket->SRTT );
+      log_dbg( LOG_DEBUG_COMMON, ": success\n" );
       have_send_exception = false;
+    } else {
+      log_dbg( LOG_PERROR, " failed" );
     }
   } else {
     std::sort( socks.begin(), socks.end(), Socket::srtt_order );
@@ -762,24 +766,21 @@ void Connection::send( uint16_t flags, string s )
       Socket *sock = *it;
       Packet px = new_packet( sock, flags, s );
       string p = px.tostring( &session );
+      log_dbg( LOG_DEBUG_COMMON, "Sending data on %hu seq %llu (%s -> %s, SRTT=%dms)",
+	       sock->sock_id, (long long unsigned) sock->next_seq - 1, sock->local_addr.tostring().c_str(),
+	       sock->remote_addr.tostring().c_str(), (int)sock->SRTT );
       bytes_sent = sendto( sock->fd(), p.data(), p.size(), MSG_DONTWAIT,
 			   &sock->remote_addr.sa, sock->remote_addr.addrlen );
       if ( bytes_sent != static_cast<ssize_t>( p.size() ) ) {
+	log_dbg( LOG_PERROR, " failed" );
 	sock->SRTT += 1000;
       } else {
 	have_send_exception = false;
 	if ( send_socket != sock ) {
-	  log_dbg( LOG_DEBUG_COMMON,
-		   ": done by switching from socket %d (%s -> %s, SRTT=%dms) to %d (%s -> %s, SRTT=%dms).\n",
-		   (int)send_socket->sock_id, send_socket->local_addr.tostring().c_str(),
-		   send_socket->remote_addr.tostring().c_str(), (int)send_socket->SRTT,
-		   (int)sock->sock_id, sock->local_addr.tostring().c_str(),
-		   sock->remote_addr.tostring().c_str(), (int)sock->SRTT );
+	  log_dbg( LOG_DEBUG_COMMON, ": switching from %hu.\n", send_socket->sock_id );
 	  send_socket = sock;
 	} else {
-	  log_dbg( LOG_DEBUG_COMMON, ": done on %d (%s -> %s, SRTT=%dms).\n",
-		   (int)send_socket->sock_id, send_socket->local_addr.tostring().c_str(),
-		   send_socket->remote_addr.tostring().c_str(), (int)send_socket->SRTT );
+	  log_dbg( LOG_DEBUG_COMMON, ": success.\n" );
 	}
 	break;
       }
@@ -909,8 +910,8 @@ string Connection::recv_one( Socket *sock, bool nonblocking )
 
   dos_assert( p.direction == (server ? TO_SERVER : TO_CLIENT) ); /* prevent malicious playback to sender */
 
-  log_dbg( LOG_DEBUG_COMMON, "Message received on socket %hu (%s <- %s): ", sock->sock_id,
-	   sock->local_addr.tostring().c_str(), packet_remote_addr.tostring().c_str() );
+  log_dbg( LOG_DEBUG_COMMON, "Receiving message sent by %hu seq %llu on socket %hu (%s <- %s): ", p.sock_id, p.seq,
+	   sock->sock_id, sock->local_addr.tostring().c_str(), packet_remote_addr.tostring().c_str() );
 
   if ( p.seq >= expected_receiver_seq[p.sock_id] ) { /* don't use out-of-order packets for timestamp or targeting */
     expected_receiver_seq[p.sock_id] = p.seq + 1; /* this is security-sensitive because a replay attack could otherwise
