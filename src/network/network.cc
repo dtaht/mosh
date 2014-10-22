@@ -738,21 +738,21 @@ void Connection::send( uint16_t flags, string s )
 
   log_dbg( LOG_DEBUG_COMMON, "timestamp = %llu\n", (long long unsigned)timestamp() );
 
-  Packet px = new_packet( send_socket, flags, s );
-
-  string p = px.tostring( &session );
-
   ssize_t bytes_sent = -1;
 
   log_dbg( LOG_DEBUG_COMMON, "Sending data" );
+  have_send_exception = true;
 
   if ( server ) {
+    Packet px = new_packet( send_socket, flags, s );
+    string p = px.tostring( &session );
     /* only send on the last heard socket. */
     bytes_sent = sendto( send_socket->fd(), p.data(), p.size(), MSG_DONTWAIT,
 			 &send_socket->remote_addr.sa, send_socket->remote_addr.addrlen );
-    if ( bytes_sent >= 0 ) {
+    if ( bytes_sent == static_cast<ssize_t>( p.size() ) ) {
       log_dbg( LOG_DEBUG_COMMON, ": done on %d (%s, SRTT = %dms).\n",
 	       (int)send_socket->sock_id, send_socket->local_addr.tostring().c_str(), (int)send_socket->SRTT );
+      have_send_exception = false;
     }
   } else {
     std::sort( socks.begin(), socks.end(), Socket::srtt_order );
@@ -760,11 +760,14 @@ void Connection::send( uint16_t flags, string s )
 	  it != socks.end();
 	  it++ ) {
       Socket *sock = *it;
+      Packet px = new_packet( sock, flags, s );
+      string p = px.tostring( &session );
       bytes_sent = sendto( sock->fd(), p.data(), p.size(), MSG_DONTWAIT,
 			   &sock->remote_addr.sa, sock->remote_addr.addrlen );
-      if ( bytes_sent < 0 ) {
+      if ( bytes_sent != static_cast<ssize_t>( p.size() ) ) {
 	sock->SRTT += 1000;
       } else {
+	have_send_exception = false;
 	if ( send_socket != sock ) {
 	  log_dbg( LOG_DEBUG_COMMON,
 		   ": done by switching from socket %d (%s -> %s, SRTT=%dms) to %d (%s -> %s, SRTT=%dms).\n",
@@ -783,14 +786,11 @@ void Connection::send( uint16_t flags, string s )
     }
   }
 
-  if ( bytes_sent == static_cast<ssize_t>( p.size() ) ) {
-    have_send_exception = false;
-  } else {
+  if ( have_send_exception ) {
     log_dbg( LOG_PERROR, " failed" );
     /* Notify the frontend on sendto() failure, but don't alter control flow.
        sendto() success is not very meaningful because packets can be lost in
        flight anyway. */
-    have_send_exception = true;
     send_exception = NetworkException( "sendto", errno );
 
     if ( errno == EMSGSIZE ) {
@@ -804,7 +804,7 @@ void Connection::send( uint16_t flags, string s )
   if ( first_sent_message_since_reply <= last_heard ) {
     first_sent_message_since_reply = now;
   } else if ( 2 * send_socket->SRTT < now - first_sent_message_since_reply ) {
-    send_socket->SRTT = now - first_sent_message_since_reply;
+    send_socket->SRTT = MAX( send_socket->SRTT, now - first_sent_message_since_reply );
     log_dbg( LOG_DEBUG_COMMON, "Connection seems lost, delaying SRTT to %dms\n", (int)send_socket->SRTT );
   }
 
