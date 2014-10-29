@@ -731,6 +731,34 @@ bool Connection::send_probe( Socket *sock, Addr &addr )
   return ( bytes_sent != static_cast<ssize_t>( p.size() ) );
 }
 
+void Connection::check_lost_connections()
+{
+  uint64_t now = timestamp();
+  for ( std::deque< Socket* >::const_iterator it = socks.begin();
+	it != socks.end();
+	it++ ) {
+    Socket *sock = *it;
+    /* This is to avoid having a non-increasing RTT when connection is lost.  This may probably be removed. */
+    if ( sock->first_sent_message_since_reply <= sock->last_heard ) {
+      sock->first_sent_message_since_reply = now;
+    } else if ( 2 * sock->SRTT < now - sock->first_sent_message_since_reply ) {
+      sock->SRTT = now - sock->first_sent_message_since_reply;
+      log_dbg( LOG_DEBUG_COMMON, "Connection seems lost on %lu, delaying SRTT to %dms\n", sock->sock_id, (int)sock->SRTT );
+    }
+  }
+}
+
+/*
+  I must re-think this function:
+    sort()
+    for(each-flow) {
+       if (!data sent) {
+         send data
+       } else {
+         send probe
+       }
+    }
+*/
 void Connection::send( uint16_t flags, string s )
 {
   if ( !has_remote_addr() ) {
@@ -756,9 +784,14 @@ void Connection::send( uint16_t flags, string s )
       log_dbg( LOG_DEBUG_COMMON, ": success\n" );
       have_send_exception = false;
     } else {
+      if ( errno == EADDRNOTAVAIL ) {
+	/* TODO: ok, rebind everything, NOW. */
+      }
       log_dbg( LOG_PERROR, " failed" );
     }
   } else {
+    check_lost_connections();
+
     std::sort( socks.begin(), socks.end(), Socket::srtt_order );
     for ( std::deque< Socket* >::const_iterator it = socks.begin();
 	  it != socks.end();
@@ -772,6 +805,10 @@ void Connection::send( uint16_t flags, string s )
       bytes_sent = sendto( sock->fd(), p.data(), p.size(), MSG_DONTWAIT,
 			   &sock->remote_addr.sa, sock->remote_addr.addrlen );
       if ( bytes_sent != static_cast<ssize_t>( p.size() ) ) {
+	if ( errno == EADDRNOTAVAIL ) {
+	  /* TODO: ok, rebind everything, NOW. */
+	  rebind = true;
+	}
 	log_dbg( LOG_PERROR, " failed" );
 	sock->SRTT += 1000;
       } else {
@@ -788,6 +825,9 @@ void Connection::send( uint16_t flags, string s )
   }
 
   if ( have_send_exception ) {
+    if ( rebind ) {
+      hop_port();
+    }
     log_dbg( LOG_PERROR, " failed" );
     /* Notify the frontend on sendto() failure, but don't alter control flow.
        sendto() success is not very meaningful because packets can be lost in
@@ -800,14 +840,6 @@ void Connection::send( uint16_t flags, string s )
   }
 
   uint64_t now = timestamp();
-
-  /* This is to avoid having a non-increasing RTT when connection is lost.  This may probably be removed. */
-  if ( first_sent_message_since_reply <= last_heard ) {
-    first_sent_message_since_reply = now;
-  } else if ( 2 * send_socket->SRTT < now - first_sent_message_since_reply ) {
-    send_socket->SRTT = MAX( send_socket->SRTT, now - first_sent_message_since_reply );
-    log_dbg( LOG_DEBUG_COMMON, "Connection seems lost, delaying SRTT to %dms\n", (int)send_socket->SRTT );
-  }
 
   if ( server ) {
     if ( now - last_heard > SERVER_ASSOCIATION_TIMEOUT ) {

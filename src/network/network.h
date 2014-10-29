@@ -122,6 +122,8 @@ namespace Network {
       uint16_t saved_timestamp;
       uint64_t saved_timestamp_received_at;
       uint64_t last_roundtrip_success;
+      uint64_t last_heard;
+      uint64_t first_sent_message_since_reply;
       bool RTT_hit;
       double SRTT;
       double RTTVAR;
@@ -166,7 +168,6 @@ namespace Network {
     uint64_t last_heard;
     uint64_t last_port_choice;
     uint64_t last_addr_request;
-    uint64_t first_sent_message_since_reply;
 
     /* Exception from send(), to be delivered if the frontend asks for it,
        without altering control flow. */
