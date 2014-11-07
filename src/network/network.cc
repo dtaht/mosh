@@ -143,8 +143,8 @@ void Connection::hop_port( void )
 
   setup();
   assert( remote_addr.addrlen != 0 );
-  socks.push_back( Socket( PF_INET ) );
-  socks6.push_back( Socket( PF_INET6 ) );
+  socks.push_back( Socket( PF_INET, 0, 0 ) );
+  socks6.push_back( Socket( PF_INET6, 0, 0 ) );
 
   prune_sockets();
 }
@@ -214,8 +214,9 @@ Connection::Flow::Flow( const Addr &s_src, const Addr &s_dst, uint16_t id )
   assert( !next_flow_id ); /* The server should not have initialized any flow. */
 }
 
-Connection::Socket::Socket( int family )
-  : _fd( socket( family, SOCK_DGRAM, 0 ) )
+Connection::Socket::Socket( int family, int lower_port, int higher_port )
+  : _fd( socket( family, SOCK_DGRAM, 0 ) ),
+    port( 0 )
 {
   if ( _fd < 0 ) {
     throw NetworkException( "socket", errno );
@@ -223,7 +224,11 @@ Connection::Socket::Socket( int family )
 
   const int on = 1;
 
+  /* In any case, we MUST bind the socket (even when client), otherwise, using
+     sendmsg + IP_PKTINFO leads to kernel panic on Mac OS. */
   if ( family == PF_INET ) {
+    try_bind( _fd, Addr( AF_INET ), lower_port, higher_port );
+
 #ifdef HAVE_IP_MTU_DISCOVER
     int flag = IP_PMTUDISC_DONT;
     socklen_t optlen = sizeof( flag );
@@ -261,6 +266,8 @@ Connection::Socket::Socket( int family )
     if ( setsockopt( _fd, IPPROTO_IPV6, IPV6_V6ONLY, &on, sizeof( on ) ) < 0 ) {
       throw NetworkException( "setsockopt( IPV6_V6ONLY off )", errno );
     }
+
+    try_bind( _fd, Addr( AF_INET6 ), lower_port, higher_port );
 
     /* request explicit congestion notification on received datagrams */
     if ( setsockopt( _fd, IPPROTO_IPV6, IPV6_RECVTCLASS, &on, sizeof( on ) ) < 0 ) {
@@ -359,51 +366,45 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
   }
 
   /* try any local interface */
-  try {
-    if ( try_bind( desired_port_low, desired_port_high ) ) { return; }
-  } catch ( const NetworkException& e ) {
-    fprintf( stderr, "Error binding to any interface: %s: %s\n",
-	     e.function.c_str(), strerror( e.the_errno ) );
-    throw; /* this time it's fatal */
+  int search_low = desired_port_low ? desired_port_low : PORT_RANGE_LOW;
+  int search_high = desired_port_high ? desired_port_high : PORT_RANGE_HIGH;
+
+  while ( search_low <= search_high ) {
+    socks.push_back( Socket( PF_INET, search_low, search_high ) );
+    try {
+      socks6.push_back( Socket( PF_INET6, socks.back().port, socks.back().port ) );
+    } catch ( const NetworkException& e ) {
+      /* ok, try to bind both the sockets to the next port number. */
+      search_low = socks.back().port + 1;
+      socks.pop_back();
+      continue;
+    }
   }
 
-  assert( false );
-  throw NetworkException( "Could not bind", errno );
+  if ( socks.empty() || socks6.empty() ) {
+    fprintf( stderr, "Error binding to any interface\n" );
+    throw; /* well, is there again some systems which doesn't support IPv6 ? */
+  }
 }
 
-bool Connection::try_bind( int port_low, int port_high )
+bool Connection::Socket::try_bind( int sock, Addr local_addr, int port_low, int port_high )
 {
-  Addr local_addr( AF_INET );
-  Addr local_addr6( AF_INET6 );
-
-  int search_low = PORT_RANGE_LOW, search_high = PORT_RANGE_HIGH;
-
-  if ( port_low != 0 ) { /* low port preference */
-    search_low = port_low;
-  }
-  if ( port_high != 0 ) { /* high port preference */
-    search_high = port_high;
-  }
-
-  socks.push_back( Socket( PF_INET ) );
-  socks6.push_back( Socket( PF_INET6 ) );
-
-  for ( int i = search_low; i <= search_high; i++ ) {
-    local_addr.sin.sin_port = htons( i );
-    local_addr6.sin6.sin6_port = htons( i );
-
-    if ( bind( sock(), &local_addr.sa, local_addr.addrlen ) == 0 ) {
-      if ( bind( sock6(), &local_addr6.sa, local_addr6.addrlen ) == 0 ) {
-	return true;
-      } else {
-	socks.pop_back(); /* such that v4 and v6 server have the same port number.  (This may not be necessary.) */
-	socks.push_back( Socket( PF_INET ) );
-      }
+  for ( int i = port_low; i <= port_high; i++ ) {
+    if ( local_addr.sa.sa_family == AF_INET ) {
+      port = local_addr.sin.sin_port = htons( i );
+    } else if ( local_addr.sa.sa_family == AF_INET6 ) {
+      port = local_addr.sin6.sin6_port = htons( i );
+    } else {
+      throw NetworkException( "try_bind: Invalid address family specified", EINVAL );
+      assert( false );
+      return false;
     }
-    if ( i == search_high ) { /* last port to search */
+
+    if ( bind( sock, &local_addr.sa, local_addr.addrlen ) == 0 ) {
+      return true;
+    }
+    if ( i == port_high ) { /* last port to search */
       int saved_errno = errno;
-      socks.pop_back();
-      socks6.pop_back();
       char host[ NI_MAXHOST ], serv[ NI_MAXSERV ];
       int errcode = getnameinfo( &local_addr.sa, local_addr.addrlen,
 				 host, sizeof( host ), serv, sizeof( serv ),
@@ -447,8 +448,9 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
   setup();
 
   std::vector< Addr > addresses = host_addresses.get_host_addresses( NULL );
-  addresses.push_back( Addr() ); /* this will allow the system to choose the
-				    source address on one flow. */
+  /* this will allow the system to choose the source address on one flow. */
+  addresses.push_back( Addr( AF_INET ) );
+  addresses.push_back( Addr( AF_INET6 ) );
 
   struct addrinfo hints;
   memset( &hints, 0, sizeof( hints ) );
@@ -471,8 +473,8 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
     }
   }
 
-  socks.push_back( Socket( PF_INET ) );
-  socks6.push_back( Socket( PF_INET6 ) );
+  socks.push_back( Socket( PF_INET, 0, 0 ) );
+  socks6.push_back( Socket( PF_INET6, 0, 0 ) );
 
   send_probes(); /* This should check all flows. */
 }
