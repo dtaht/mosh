@@ -108,8 +108,6 @@ namespace Network {
 
     static const int CONGESTION_TIMESTAMP_PENALTY = 500; /* ms */
 
-    bool try_bind( int port_low, int port_high );
-
     class Flow {
     private:
       static uint16_t next_flow_id;
@@ -148,8 +146,11 @@ namespace Network {
       int _fd;
 
     public:
+      int port; /* host byte order */
       int fd( void ) const { return _fd; }
-      Socket( int family );
+      bool try_bind( int sock, Addr addrToBind, int port_low, int port_high );
+
+      Socket( int family, int lower_port, int higher_port );
       ~Socket();
 
       Socket( const Socket & other );
