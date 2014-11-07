@@ -540,8 +540,6 @@ ssize_t Connection::sendfromto( int sock, const char *buffer, size_t size, int f
   if ( family == AF_INET ) {
 
 #ifdef IP_PKTINFO
-#ifndef __APPLE__
-    /* This leads to a kernel panic on Mac OS (at least on 10.7.5). */
     struct in_pktinfo *info;
     cmsghdr->cmsg_level = IPPROTO_IP;
     cmsghdr->cmsg_type = IP_PKTINFO;
@@ -550,7 +548,6 @@ ssize_t Connection::sendfromto( int sock, const char *buffer, size_t size, int f
     memset( info, 0, sizeof( *info ) );
     info->ipi_spec_dst = from.sin.sin_addr;
     msghdr.msg_controllen += CMSG_SPACE( sizeof( *info ) );
-#endif
 #elif defined IP_SENDSRCADDR
     struct in_addr *info;
     cmsghdr->cmsg_level = IPPROTO_IP;
