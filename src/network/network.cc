@@ -345,8 +345,8 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
   /* The mosh wrapper always gives an IP request, in order
      to deal with multihomed servers. The port is optional. */
 
-  /* We ignore the IP provided, because anyway, we bind to a hybrid (dual-stack)
-     socket.  The problem with multihomed server is solved by sending back
+  /* We ignore the IP provided, because we will specify ourselves the source
+     address.  The problem with multihomed server is solved by sending back
      packets answering with the last known local IP used to receive a packet.
      If a port request is given, we bind only to that port. */
 
