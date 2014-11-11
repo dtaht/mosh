@@ -73,6 +73,7 @@ const uint64_t SEQUENCE_MASK  = 0x0000FFFFFFFFFFFF;
 #define GET_DIRECTION(nonce) ( ((nonce) & DIRECTION_MASK) ? TO_CLIENT : TO_SERVER )
 #define GET_FLOWID(nonce) ( uint16_t( ( (nonce) & FLOWID_MASK ) >> 48 ) )
 const uint16_t PROBE_FLAG = 1 << 0;
+const uint16_t ADDR_FLAG = 1 << 1;
 
 /* Read in packet from coded string */
 Packet::Packet( string coded_packet, Session *session )
@@ -101,6 +102,11 @@ Packet::Packet( string coded_packet, Session *session )
 bool Packet::is_probe( void )
 {
   return flags & PROBE_FLAG;
+}
+
+bool Packet::is_addr_msg( void )
+{
+  return flags & ADDR_FLAG;
 }
 
 /* Output coded string from packet */
@@ -142,7 +148,7 @@ void Connection::hop_port( void )
   assert( !server );
 
   setup();
-  assert( remote_addr.addrlen != 0 );
+  assert( flows.size() != 0 );
   socks.push_back( Socket( PF_INET, 0, 0 ) );
   socks6.push_back( Socket( PF_INET6, 0, 0 ) );
 
@@ -174,6 +180,14 @@ void Connection::prune_sockets( std::deque< Socket > &socks_queue )
     for ( int i = 0; i < num_to_kill; i++ ) {
       socks_queue.pop_front();
     }
+  }
+}
+
+void Connection::check_remote_addr( void ) {
+  uint64_t now = timestamp();
+  if ( now - last_addr_request > MAX_ADDR_REQUEST_INTERVAL ) {
+    send( ADDR_FLAG, string( "" ) );
+    last_addr_request = now;
   }
 }
 
@@ -329,6 +343,7 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
     socks6(),
     has_remote_addr( false ),
     remote_addr(),
+    received_remote_addr(),
     flows(),
     last_flow( NULL ),
     host_addresses(),
@@ -338,6 +353,7 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
     direction( TO_CLIENT ),
     last_heard( -1 ),
     last_port_choice( -1 ),
+    last_addr_request( -1 ),
     last_roundtrip_success( -1 ),
     have_send_exception( false ),
     send_exception()
@@ -427,6 +443,7 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
     socks6(),
     has_remote_addr( false ),
     remote_addr(),
+    received_remote_addr(),
     flows(),
     last_flow( NULL ),
     host_addresses(),
@@ -436,6 +453,7 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
     direction( TO_SERVER ),
     last_heard( -1 ),
     last_port_choice( -1 ),
+    last_addr_request( -1 ),
     last_roundtrip_success( -1 ),
     have_send_exception( false ),
     send_exception()
@@ -458,7 +476,7 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
   hints.ai_socktype = SOCK_DGRAM;
   hints.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV;
   AddrInfo ai( ip, port, &hints );
-  fatal_assert( ai.res->ai_addrlen <= sizeof( remote_addr ) );
+  fatal_assert( ai.res->ai_addrlen <= sizeof( struct Addr ) );
 
   has_remote_addr = true;
 
@@ -476,6 +494,9 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
   socks.push_back( Socket( PF_INET, 0, 0 ) );
   socks6.push_back( Socket( PF_INET6, 0, 0 ) );
 
+  /* Ask the server what are its addresses. */
+  send( ADDR_FLAG, string( "" ) );
+  last_addr_request = timestamp();
   send_probes(); /* This should check all flows. */
 }
 
@@ -511,6 +532,41 @@ bool Connection::send_probe( Flow *flow )
   }
 
   return ( bytes_sent != static_cast<ssize_t>( p.size() ) );
+}
+
+void Connection::send_addresses( void )
+{
+  assert( server );
+  string payload;
+  std::vector< Addr > addresses = host_addresses.get_host_addresses( NULL );
+  for ( std::vector< Addr >::const_iterator la_it = addresses.begin();
+	la_it != addresses.end();
+	la_it++ ) {
+    uint8_t len;
+    uint8_t family;
+    uint16_t port = last_flow->src.sin.sin_port;
+    string addr;
+    int addrlen;
+    /* Set our listening port. */
+    if ( la_it->sa.sa_family == AF_INET ) {
+      addrlen = 4;
+      family = 4; /* AF_INET6 is not standard. */
+      addr = string( (char *) &la_it->sin.sin_addr, 4 );
+    } else if ( la_it->sa.sa_family == AF_INET6 ) {
+      addrlen = 16;
+      family = 6;
+      addr = string( (char *) &la_it->sin6.sin6_addr, 16 );
+    } else {
+      continue;
+    }
+    len = 1 + 2 + addrlen; /* "len" is not considered */
+    log_dbg( LOG_DEBUG_COMMON, "Sending my address: %s.\n", la_it->tostring().c_str() );
+    payload += string( (char *) &len, 1 ) +
+      string( (char *) &family, 1 ) +
+      string( (char *) &port, 2 ) +
+      addr;
+  }
+  send( ADDR_FLAG, payload );
 }
 
 ssize_t Connection::sendfromto( int sock, const char *buffer, size_t size, int flags, Addr from, Addr to )
@@ -581,6 +637,11 @@ ssize_t Connection::sendfromto( int sock, const char *buffer, size_t size, int f
 }
 
 void Connection::send( string s )
+{
+  send( 0, s);
+}
+
+void Connection::send( uint16_t flags, string s )
 {
   if ( !has_remote_addr ) {
     return;
@@ -676,6 +737,7 @@ void Connection::send( string s )
 	 && ( now - last_roundtrip_success > PORT_HOP_INTERVAL ) ) {
       hop_port();
     }
+    check_remote_addr();
   }
 }
 
@@ -854,6 +916,7 @@ string Connection::recv_one( int sock_to_recv )
     last_heard = timestamp();
 
     if ( server ) { /* only client can roam */
+      bool has_roam = last_flow == flow_info;
       if ( p.is_probe() ) {
 	if ( UNLIKELY( !last_flow ) ) { /* This should only occurs once. */
 	  last_flow = flow_info;
@@ -863,11 +926,9 @@ string Connection::recv_one( int sock_to_recv )
       }
       last_flow = flow_info;
 
-      if ( (socklen_t)remote_addr.addrlen != header.msg_namelen ||
-	   memcmp( &remote_addr, &packet_remote_addr, remote_addr.addrlen ) != 0 ) {
-	remote_addr = packet_remote_addr;
+      if ( has_roam ) {
 	char host[ NI_MAXHOST ], serv[ NI_MAXSERV ];
-	int errcode = getnameinfo( &remote_addr.sa, remote_addr.addrlen,
+	int errcode = getnameinfo( &last_flow->dst.sa, last_flow->dst.addrlen,
 				   host, sizeof( host ), serv, sizeof( serv ),
 				   NI_DGRAM | NI_NUMERICHOST | NI_NUMERICSERV );
 	if ( errcode != 0 ) {
@@ -879,7 +940,57 @@ string Connection::recv_one( int sock_to_recv )
     }
   }
 
+  if ( p.is_addr_msg() ) {
+    if ( server ) {
+      send_addresses();
+      assert( p.payload.empty() );
+    } else {
+      parse_received_addresses( p.payload );
+      p.payload = string("");
+    }
+  }
+
   return p.payload; /* we do return out-of-order or duplicated packets to caller */
+}
+
+void Connection::parse_received_addresses( string payload )
+{
+  int size = payload.size();
+  const unsigned char *data = (const unsigned char*) payload.data();
+  std::vector< Addr > addr;
+  while( size > 0 ) {
+    int len = (int)data[0];
+    if ( size < 1 + len ) {
+      log_dbg( LOG_DEBUG_COMMON, "Truncated message received.\n" );
+      break;
+    }
+    Addr tmp;
+    uint8_t family = data[1];
+    if ( family == 4 ) {
+      tmp = Addr( AF_INET );
+      memcpy(&tmp.sin.sin_port, data + 2, 2);
+      memcpy(&tmp.sin.sin_addr, data + 4, 4);
+    } else if ( family == 6 ) {
+      tmp = Addr( AF_INET6 );
+      memcpy(&tmp.sin6.sin6_port, data + 2, 2);
+      memcpy(&tmp.sin6.sin6_addr, data + 4, 16);
+    }
+    addr.push_back( tmp );
+    log_dbg( LOG_DEBUG_COMMON, "Remote address received: %s.\n", tmp.tostring().c_str() );
+    data += 1 + len;
+    size -= 1 + len;
+  }
+  assert( size == 0 );
+
+  /* don't retain addresses already registered in remote_addr */
+  received_remote_addr.resize( addr.size() );
+  std::sort( addr.begin(), addr.end() );
+  std::sort( remote_addr.begin(), remote_addr.end() );
+  std::vector< Addr >::const_iterator it;
+  it = std::set_difference( addr.begin(), addr.end(),
+			    remote_addr.begin(), remote_addr.end(),
+			    received_remote_addr.begin() );
+  received_remote_addr.resize( it - received_remote_addr.begin() );
 }
 
 std::string Connection::port( void ) const

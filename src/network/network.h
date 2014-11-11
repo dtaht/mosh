@@ -88,6 +88,7 @@ namespace Network {
     Packet( string coded_packet, Session *session );
     
     bool is_probe( void );
+    bool is_addr_msg( void );
     string tostring( Session *session );
   };
 
@@ -102,6 +103,7 @@ namespace Network {
 
     static const unsigned int SERVER_ASSOCIATION_TIMEOUT = 40000;
     static const unsigned int PORT_HOP_INTERVAL          = 10000;
+    static const unsigned int MAX_ADDR_REQUEST_INTERVAL  = 10000;
 
     static const unsigned int MAX_PORTS_OPEN             = 10;
     static const unsigned int MAX_OLD_SOCKET_AGE         = 60000;
@@ -153,7 +155,8 @@ namespace Network {
     std::deque< Socket > socks;
     std::deque< Socket > socks6;
     bool has_remote_addr;
-    Addr remote_addr;
+    std::vector< Addr > remote_addr;
+    std::vector< Addr > received_remote_addr;
     std::map< uint16_t, Flow* > flows;
     Flow *last_flow;
     Addresses host_addresses;
@@ -169,6 +172,7 @@ namespace Network {
 
     uint64_t last_heard;
     uint64_t last_port_choice;
+    uint64_t last_addr_request;
     uint64_t last_roundtrip_success; /* transport layer needs to tell us this */
 
     /* Exception from send(), to be delivered if the frontend asks for it,
@@ -179,6 +183,7 @@ namespace Network {
     Packet new_packet( Flow *flow, uint16_t flags, string &s_payload );
 
     void hop_port( void );
+    void check_remote_addr( void );
 
     int sock( void ) const { assert( !socks.empty() ); return socks.back().fd(); }
     int sock6( void ) const { assert( !socks6.empty() ); return socks6.back().fd(); }
@@ -186,10 +191,13 @@ namespace Network {
     void prune_sockets( void );
     void prune_sockets( std::deque< Socket > &socks_vect );
 
+    void send( uint16_t flags, string s );
     void send_probes( void );
     bool send_probe( Flow *flow );
+    void send_addresses( void );
     ssize_t sendfromto( int sock, const char *buffer, size_t size, int flags, Addr from, Addr to );
     string recv_one( int sock_to_recv );
+    void parse_received_addresses( string payload );
 
   public:
     Connection( const char *desired_ip, const char *desired_port ); /* server */
@@ -207,8 +215,8 @@ namespace Network {
     uint64_t timeout( void ) const;
     double get_SRTT( void ) const { return last_flow ? last_flow->SRTT : 1000; }
 
-    const Addr &get_remote_addr( void ) const { return remote_addr; }
-    socklen_t get_remote_addr_len( void ) const { return remote_addr.addrlen; }
+    const Addr &get_remote_addr( void ) const { return last_flow ? last_flow->dst : remote_addr.back(); }
+    socklen_t get_remote_addr_len( void ) const { return last_flow ? last_flow->dst.addrlen : 0; }
 
     const NetworkException *get_send_exception( void ) const
     {
