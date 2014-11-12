@@ -203,12 +203,17 @@ bool Connection::flow_exists( const Addr &src, const Addr &dst ) {
 }
 
 /* Add new flows, if needed. */
-void Connection::check_flows( void ) {
+void Connection::check_flows( bool remote_has_changed ) {
+  assert( !server );
   int has_changed = 0;
   std::vector< Addr > addresses = host_addresses.get_host_addresses( &has_changed );
   /* this will allow the system to choose the source address on one flow. */
   addresses.push_back( Addr( AF_INET ) );
   addresses.push_back( Addr( AF_INET6 ) );
+
+  if ( !has_changed && !remote_has_changed ) {
+    return;
+  }
 
   for ( std::vector< Addr >::const_iterator la_it = addresses.begin();
 	la_it != addresses.end();
@@ -540,7 +545,7 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
     }
   }
 
-  check_flows();
+  check_flows( true );
 
   socks.push_back( Socket( PF_INET, 0, 0 ) );
   socks6.push_back( Socket( PF_INET6, 0, 0 ) );
@@ -767,6 +772,9 @@ void Connection::send( uint16_t flags, string s )
 
   if ( have_send_exception ) {
     log_dbg( LOG_PERROR, " failed" );
+    if ( !server ) {
+      check_flows( false );
+    }
     /* Notify the frontend on sendmsg() failure, but don't alter control flow.
        sendmsg() success is not very meaningful because packets can be lost in
        flight anyway. */
@@ -996,7 +1004,7 @@ string Connection::recv_one( int sock_to_recv )
       assert( p.payload.empty() );
     } else {
       parse_received_addresses( p.payload );
-      check_flows();
+      check_flows( true );
       p.payload = string("");
     }
   }
