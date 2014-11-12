@@ -146,6 +146,7 @@ Packet Connection::new_packet( Flow *flow, uint16_t flags, string &s_payload )
 void Connection::hop_port( void )
 {
   assert( !server );
+  log_dbg( LOG_DEBUG_COMMON, "Hop port!\n" );
 
   setup();
   assert( flows.size() != 0 );
@@ -481,6 +482,7 @@ bool Connection::Socket::try_bind( int sock, Addr local_addr, int port_low, int 
 	  port = ntohs( local_addr.sin6.sin6_port );
 	}
       }
+      log_dbg( LOG_DEBUG_COMMON, "New socket bound to %s.\n", local_addr.tostring().c_str() );
       return true;
     }
     if ( i == port_high ) { /* last port to search */
@@ -492,8 +494,7 @@ bool Connection::Socket::try_bind( int sock, Addr local_addr, int port_low, int 
       if ( errcode != 0 ) {
 	throw NetworkException( std::string( "bind: getnameinfo: " ) + gai_strerror( errcode ), 0 );
       }
-      fprintf( stderr, "Failed binding to %s:%s\n",
-	       host, serv );
+      log_msg( LOG_PERROR, "Failed binding to %s:%s", host, serv );
       throw NetworkException( "bind", saved_errno );
     }
   }
@@ -577,8 +578,9 @@ bool Connection::send_probe( Flow *flow )
 
   string p = px.tostring( &session );
 
-  log_dbg( LOG_DEBUG_COMMON, "Sending probe: %s -> %s: ",
-           flow->src.tostring().c_str(), flow->dst.tostring().c_str() );
+  log_dbg( LOG_DEBUG_COMMON, "Sending probe on %d seq %llu (%s -> %s, SRTT = %dms): ",
+	   (int)flow->flow_id, (long long unsigned)flow->next_seq - 1,
+	   flow->src.tostring().c_str(), flow->dst.tostring().c_str(), (int)flow->SRTT );
 
   ssize_t bytes_sent = sendfromto( flow->dst.sa.sa_family == AF_INET ? sock() : sock6(),
 				   p.data(), p.size(), MSG_DONTWAIT, flow->src, flow->dst );
@@ -710,42 +712,54 @@ void Connection::send( uint16_t flags, string s )
 
   have_send_exception = true;
 
-  log_dbg( LOG_DEBUG_COMMON, "Sending data" );
+  log_dbg( LOG_DEBUG_COMMON, "timestamp = %llu\n", (long long unsigned)timestamp() );
+
   ssize_t bytes_sent = -1;
   if ( server ) {
     Packet px = new_packet( last_flow, flags, s );
 
     string p = px.tostring( &session );
 
+    log_dbg( LOG_DEBUG_COMMON, "Sending data on %hu seq %llu (%s -> %s, SRTT = %dms)",
+	     last_flow->flow_id, (long long unsigned) last_flow->next_seq - 1, last_flow->src.tostring().c_str(),
+	     last_flow->dst.tostring().c_str(), (int)last_flow->SRTT );
+
     bytes_sent = sendfromto( last_flow->dst.sa.sa_family == AF_INET ? sock() : sock6(),
 			     p.data(), p.size(), MSG_DONTWAIT, last_flow->src, last_flow->dst );
     if ( bytes_sent == static_cast<ssize_t>( p.size() ) ) {
+      log_dbg( LOG_DEBUG_COMMON, ": success\n" );
       have_send_exception = false;
-      log_dbg( LOG_DEBUG_COMMON, ": done (%s -> %s).\n",
-	       last_flow->src.tostring().c_str(), last_flow->dst.tostring().c_str() );
+    } else {
+      if ( errno == EADDRNOTAVAIL ) {
+	/* This should not append, since we just receive a message on this address ! */
+      }
+      log_dbg( LOG_PERROR, " failed" );
     }
 
   } else if ( UNLIKELY( last_flow == NULL ) ) { /* First send. */
-    log_dbg( LOG_DEBUG_COMMON, " to all our addresses (first send):\n");
     for ( std::map< uint16_t, Flow* >::iterator it = flows.begin();
 	  it != flows.end();
 	  it++ ) {
-      Packet px = new_packet( it->second, flags, s );
+      Flow *flow = it->second;
+      Packet px = new_packet( flow, flags, s );
       string p = px.tostring( &session );
-      log_dbg( LOG_DEBUG_COMMON, "    %s -> %s ",
-	       it->second->src.tostring().c_str(), it->second->dst.tostring().c_str() );
-      bytes_sent = sendfromto( it->second->dst.sa.sa_family == AF_INET ? sock() : sock6(),
-			       p.data(), p.size(), MSG_DONTWAIT, it->second->src, it->second->dst );
+      log_dbg( LOG_DEBUG_COMMON, "Sending data on %hu seq %llu (%s -> %s, SRTT = %dms)",
+	       flow->flow_id, (long long unsigned) flow->next_seq - 1, flow->src.tostring().c_str(),
+	       flow->dst.tostring().c_str(), (int)flow->SRTT );
+      bytes_sent = sendfromto( flow->dst.sa.sa_family == AF_INET ? sock() : sock6(),
+			       p.data(), p.size(), MSG_DONTWAIT, flow->src, flow->dst );
       if ( bytes_sent < 0 ) {
-	it->second->SRTT = MIN( it->second->SRTT + 1000, 10000);
+	flow->SRTT = MIN( flow->SRTT + 1000, 10000);
 	if ( errno == EMSGSIZE ) {
-	  it->second->MTU = 500; /* payload MTU of last resort */
+	  flow->MTU = 500; /* payload MTU of last resort */
 	}
- 	log_dbg( LOG_PERROR, "(failed (SRTT = %dms))", (int)it->second->SRTT );
+ 	log_dbg( LOG_PERROR, " failed" );
       } else if ( bytes_sent == static_cast<ssize_t>( p.size() ) ) {
 	have_send_exception = false;
-	log_dbg( LOG_DEBUG_COMMON, "(success).\n" );
-	last_flow = it->second;
+	log_dbg( LOG_DEBUG_COMMON, ": success.\n" );
+	last_flow = flow;
+      } else {
+	log_dbg( LOG_DEBUG_COMMON, ": failed (partial).\n" );
       }
     }
 
@@ -755,26 +769,31 @@ void Connection::send( uint16_t flags, string s )
     for ( std::vector< std::pair< uint16_t, Flow* > >::const_iterator it = flows_vect.begin();
 	  it != flows_vect.end();
 	  it ++ ) {
-      Packet px = new_packet( it->second, flags, s );
+      Flow *flow = it->second;
+      Packet px = new_packet( flow, flags, s );
       string p = px.tostring( &session );
-      bytes_sent = sendfromto( it->second->dst.sa.sa_family == AF_INET ? sock() : sock6(),
-			       p.data(), p.size(), MSG_DONTWAIT, it->second->src, it->second->dst );
+      log_dbg( LOG_DEBUG_COMMON, "Sending data on %hu seq %llu (%s -> %s, SRTT = %dms)",
+	       flow->flow_id, (long long unsigned) flow->next_seq - 1, flow->src.tostring().c_str(),
+	       flow->dst.tostring().c_str(), (int)flow->SRTT );
+      bytes_sent = sendfromto( flow->dst.sa.sa_family == AF_INET ? sock() : sock6(),
+			       p.data(), p.size(), MSG_DONTWAIT, flow->src, flow->dst );
       if ( bytes_sent < 0 ) {
-	it->second->SRTT = MIN( it->second->SRTT + 1000, 10000);
+	flow->SRTT = MIN( flow->SRTT + 1000, 10000);
 	if ( errno == EMSGSIZE ) {
-	  it->second->MTU = 500; /* payload MTU of last resort */
+	  flow->MTU = 500; /* payload MTU of last resort */
 	}
+ 	log_dbg( LOG_PERROR, " failed" );
       } else if ( bytes_sent == static_cast<ssize_t>( p.size() ) ){
 	have_send_exception = false;
-	if ( last_flow != it->second ) {
-	  log_dbg( LOG_DEBUG_COMMON, ": done by switching to (%s -> %s, SRTT = %dms) [was (%s -> %s, SRTT = %dms)].\n",
-		   it->second->src.tostring().c_str(), it->second->dst.tostring().c_str(), (int)it->second->SRTT,
-		   last_flow->src.tostring().c_str(), last_flow->dst.tostring().c_str(), (int)last_flow->SRTT );
-	  last_flow = it->second;
+	if ( last_flow != flow ) {
+	  log_dbg( LOG_DEBUG_COMMON, ": switching from %hu.\n", last_flow->flow_id );
+	  last_flow = flow;
 	} else {
-	  log_dbg( LOG_DEBUG_COMMON, ": success (SRTT = %dms).\n", (int)it->second->SRTT );
+	  log_dbg( LOG_DEBUG_COMMON, ": success.\n" );
 	}
 	break;
+      } else {
+	log_dbg( LOG_DEBUG_COMMON, ": failed (partial).\n" );
       }
     }
 
@@ -782,7 +801,6 @@ void Connection::send( uint16_t flags, string s )
   }
 
   if ( have_send_exception ) {
-    log_dbg( LOG_PERROR, " failed" );
     if ( !server ) {
       check_flows( false );
     }
@@ -843,6 +861,7 @@ string Connection::recv_one( int sock_to_recv )
   Addr packet_local_addr;  /* == dst of the IP packet */
   struct msghdr header;
   struct iovec msg_iovec;
+  uint64_t now = timestamp();
 
   char msg_payload[ Session::RECEIVE_MTU ];
   char msg_control[ Session::RECEIVE_MTU ];
@@ -923,8 +942,9 @@ string Connection::recv_one( int sock_to_recv )
   Packet p( string( msg_payload, received_len ), &session );
 
   Flow *flow_info = flows[ p.flow_id ];
-  log_dbg( LOG_DEBUG_COMMON, "Message received on %sflow %hu (%s <- %s): ", flow_info ? "" : "new ", p.flow_id,
-	   packet_local_addr.tostring().c_str(), packet_remote_addr.tostring().c_str() );
+  log_dbg( LOG_DEBUG_COMMON, "timestamp = %llu\n", (long long unsigned)now );
+  log_dbg( LOG_DEBUG_COMMON, "Receiving message on flow %d seq %llu (%s <- %s): ", (int) p.flow_id,
+	   (long long unsigned)p.seq, packet_local_addr.tostring().c_str(), packet_remote_addr.tostring().c_str() );
   if ( !flow_info ) {
     fatal_assert( server ); /* if client, then server answers with an unknown flow ID. This is terrific. */
     flow_info = new Flow( packet_local_addr, packet_remote_addr, p.flow_id );
@@ -944,7 +964,7 @@ string Connection::recv_one( int sock_to_recv )
 
     if ( p.timestamp != uint16_t(-1) ) {
       flow_info->saved_timestamp = p.timestamp;
-      flow_info->saved_timestamp_received_at = timestamp();
+      flow_info->saved_timestamp_received_at = now;
 
       if ( congestion_experienced ) {
 	/* signal counterparty to slow down */
@@ -1010,6 +1030,8 @@ string Connection::recv_one( int sock_to_recv )
 		 host, serv );
       }
     }
+  } else {
+    log_dbg( LOG_DEBUG_COMMON, "out-of-order.\n" );
   }
 
   if ( p.is_addr_msg() ) {
