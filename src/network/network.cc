@@ -966,7 +966,7 @@ string Connection::recv_one( int sock_to_recv )
     last_heard = timestamp();
 
     if ( server ) { /* only client can roam */
-      bool has_roam = last_flow == flow_info;
+      bool has_roam = last_flow != flow_info;
       if ( p.is_probe() ) {
 	if ( UNLIKELY( !last_flow ) ) { /* This should only occurs once. */
 	  last_flow = flow_info;
