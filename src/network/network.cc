@@ -387,7 +387,6 @@ private:
 Connection::Connection( const char *desired_ip, const char *desired_port ) /* server */
   : socks(),
     socks6(),
-    has_remote_addr( false ),
     remote_addr(),
     received_remote_addr(),
     flows(),
@@ -499,7 +498,6 @@ bool Connection::Socket::try_bind( int sock, Addr local_addr, int port_low, int 
 Connection::Connection( const char *key_str, const char *ip, const char *port ) /* client */
   : socks(),
     socks6(),
-    has_remote_addr( false ),
     remote_addr(),
     received_remote_addr(),
     flows(),
@@ -541,8 +539,6 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
       remote_addr.push_back( Addr( *ra_it->ai_addr, ra_it->ai_addrlen ) );
     }
   }
-
-  has_remote_addr = true;
 
   check_flows();
 
@@ -698,7 +694,7 @@ void Connection::send( string s )
 
 void Connection::send( uint16_t flags, string s )
 {
-  if ( !has_remote_addr ) {
+  if ( server && !last_flow ) {
     return;
   }
 
@@ -784,7 +780,7 @@ void Connection::send( uint16_t flags, string s )
   uint64_t now = timestamp();
   if ( server ) {
     if ( now - last_heard > SERVER_ASSOCIATION_TIMEOUT ) {
-      has_remote_addr = false;
+      last_flow = NULL;
       fprintf( stderr, "Server now detached from client.\n" );
     }
   } else { /* client */
@@ -967,7 +963,6 @@ string Connection::recv_one( int sock_to_recv )
     }
 
     /* auto-adjust to remote host */
-    has_remote_addr = true;
     last_heard = timestamp();
 
     if ( server ) { /* only client can roam */

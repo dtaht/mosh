@@ -154,10 +154,9 @@ namespace Network {
 
     std::deque< Socket > socks;
     std::deque< Socket > socks6;
-    bool has_remote_addr;
     std::vector< Addr > remote_addr;
     std::vector< Addr > received_remote_addr;
-    std::map< uint16_t, Flow* > flows;
+    std::map< uint16_t, Flow* > flows; /* do NEVER remove flows when server, for security reason. */
     Flow *last_flow;
     Addresses host_addresses;
 
@@ -212,7 +211,7 @@ namespace Network {
 
     std::string port( void ) const;
     string get_key( void ) const { return key.printable_key(); }
-    bool get_has_remote_addr( void ) const { return has_remote_addr; }
+    bool get_has_remote_addr( void ) const { return last_flow != NULL; }
 
     uint64_t timeout( void ) const;
     double get_SRTT( void ) const { return last_flow ? last_flow->SRTT : 1000; }
