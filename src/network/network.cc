@@ -191,6 +191,52 @@ void Connection::check_remote_addr( void ) {
   }
 }
 
+bool Connection::flow_exists( const Addr &src, const Addr &dst ) {
+  for ( std::map< uint16_t, Flow* >::iterator it = flows.begin();
+	it != flows.end();
+	it++ ) {
+    if ( it->second->src == src && it->second->dst == dst ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/* Add new flows, if needed. */
+void Connection::check_flows( void ) {
+  int has_changed = 0;
+  std::vector< Addr > addresses = host_addresses.get_host_addresses( &has_changed );
+  /* this will allow the system to choose the source address on one flow. */
+  addresses.push_back( Addr( AF_INET ) );
+  addresses.push_back( Addr( AF_INET6 ) );
+
+  for ( std::vector< Addr >::const_iterator la_it = addresses.begin();
+	la_it != addresses.end();
+	la_it++ ) {
+    for ( std::vector< Addr >::const_iterator ra_it = remote_addr.begin();
+	  ra_it != remote_addr.end();
+	  ra_it++ ) {
+      if ( la_it->sa.sa_family == ra_it->sa.sa_family ) {
+	if ( ! flow_exists( *la_it, *ra_it ) ) {
+	  Flow *flow_info = new Flow( *la_it, *ra_it );
+	  flows[ flow_info->flow_id ] = flow_info;
+	}
+      }
+    }
+
+    for ( std::vector< Addr >::const_iterator ra_it = received_remote_addr.begin();
+	  ra_it != received_remote_addr.end();
+	  ra_it++ ) {
+      if ( la_it->sa.sa_family == ra_it->sa.sa_family ) {
+	if ( ! flow_exists( *la_it, *ra_it ) ) {
+	  Flow *flow_info = new Flow( *la_it, *ra_it );
+	  flows[ flow_info->flow_id ] = flow_info;
+	}
+      }
+    }
+  }
+}
+
 uint16_t Connection::Flow::next_flow_id = 0;
 
 Connection::Flow::Flow( const Addr &s_src, const Addr &s_dst )
@@ -478,18 +524,15 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
   AddrInfo ai( ip, port, &hints );
   fatal_assert( ai.res->ai_addrlen <= sizeof( struct Addr ) );
 
-  has_remote_addr = true;
-
-  for ( std::vector< Addr >::const_iterator la_it = addresses.begin();
-	la_it != addresses.end();
-	la_it++ ) {
-    for ( struct addrinfo *ra_it = ai.res; ra_it != NULL; ra_it = ra_it->ai_next ) {
-      if ( la_it->sa.sa_family == AF_UNSPEC || la_it->sa.sa_family == ra_it->ai_addr->sa_family ) {
-	Flow *flow_info = new Flow( *la_it, Addr( *ra_it->ai_addr, ra_it->ai_addrlen ) );
-	flows[ flow_info->flow_id ] = flow_info;
-      }
+  for ( struct addrinfo *ra_it = ai.res; ra_it != NULL; ra_it = ra_it->ai_next ) {
+    if ( ra_it->ai_addr->sa_family == AF_INET || ra_it->ai_addr->sa_family == AF_INET6 ) {
+      remote_addr.push_back( Addr( *ra_it->ai_addr, ra_it->ai_addrlen ) );
     }
   }
+
+  has_remote_addr = true;
+
+  check_flows();
 
   socks.push_back( Socket( PF_INET, 0, 0 ) );
   socks6.push_back( Socket( PF_INET6, 0, 0 ) );
@@ -946,6 +989,7 @@ string Connection::recv_one( int sock_to_recv )
       assert( p.payload.empty() );
     } else {
       parse_received_addresses( p.payload );
+      check_flows();
       p.payload = string("");
     }
   }

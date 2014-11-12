@@ -184,6 +184,8 @@ namespace Network {
 
     void hop_port( void );
     void check_remote_addr( void );
+    bool flow_exists( const Addr &src, const Addr &dst );
+    void check_flows( void );
 
     int sock( void ) const { assert( !socks.empty() ); return socks.back().fd(); }
     int sock6( void ) const { assert( !socks6.empty() ); return socks6.back().fd(); }
