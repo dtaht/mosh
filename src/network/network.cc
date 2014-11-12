@@ -463,6 +463,18 @@ bool Connection::Socket::try_bind( int sock, Addr local_addr, int port_low, int 
     }
 
     if ( bind( sock, &local_addr.sa, local_addr.addrlen ) == 0 ) {
+      if ( port == 0 ) {
+	socklen_t tmp;
+	if ( getsockname( sock, &local_addr.sa, &tmp ) < 0 ) {
+	  throw NetworkException( "bind - getsockname", errno );
+	}
+	local_addr.addrlen = tmp;
+	if ( local_addr.sa.sa_family == AF_INET ) {
+	  port = local_addr.sin.sin_port;
+	} else if ( local_addr.sa.sa_family == AF_INET6 ) {
+	  port = local_addr.sin6.sin6_port;
+	}
+      }
       return true;
     }
     if ( i == port_high ) { /* last port to search */
@@ -1042,7 +1054,7 @@ std::string Connection::port( void ) const
   Addr local_addr;
   socklen_t addrlen = sizeof( local_addr );
 
-  /* Remark that sock && sock6 are bound at the same port number. */
+  /* Remark that sock && sock6 are bound at the same port number. (server only.) */
   if ( getsockname( sock(), &local_addr.sa, &addrlen ) < 0 ) {
     throw NetworkException( "getsockname", errno );
   }
