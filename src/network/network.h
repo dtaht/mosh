@@ -104,6 +104,7 @@ namespace Network {
     static const unsigned int SERVER_ASSOCIATION_TIMEOUT = 40000;
     static const unsigned int PORT_HOP_INTERVAL          = 10000;
     static const unsigned int MAX_ADDR_REQUEST_INTERVAL  = 10000;
+    static const unsigned int MIN_PROBE_INTERVAL         = 500;
 
     static const unsigned int MAX_PORTS_OPEN             = 10;
     static const unsigned int MAX_OLD_SOCKET_AGE         = 60000;
@@ -116,6 +117,7 @@ namespace Network {
       Flow( void )
 	: src( Addr() ), dst( Addr() ), MTU( DEFAULT_SEND_MTU ), next_seq( 0 ),
 	expected_receiver_seq( 0 ), saved_timestamp( -1 ), saved_timestamp_received_at( 0 ),
+	first_sent_message_since_reply( -1), last_heard( -1 ), next_probe( 0 ),
 	RTT_hit( false ), SRTT( 1000 ), RTTVAR( 500 ), flow_id( 0 )
       {}
 
@@ -128,6 +130,9 @@ namespace Network {
       uint64_t expected_receiver_seq;
       uint16_t saved_timestamp;
       uint64_t saved_timestamp_received_at;
+      uint64_t first_sent_message_since_reply;
+      uint64_t last_heard;
+      uint64_t next_probe;
       bool RTT_hit;
       double SRTT;
       double RTTVAR;
