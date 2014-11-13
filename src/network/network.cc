@@ -187,8 +187,9 @@ void Connection::prune_sockets( std::deque< Socket > &socks_queue )
 void Connection::check_remote_addr( void ) {
   uint64_t now = timestamp();
   if ( now - last_addr_request > MAX_ADDR_REQUEST_INTERVAL ) {
-    send( ADDR_FLAG, string( "" ) );
     last_addr_request = now;
+    log_dbg( LOG_DEBUG_COMMON, "Asking server addresses.\n" );
+    send( ADDR_FLAG, string( "" ) );
   }
 }
 
