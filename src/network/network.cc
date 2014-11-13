@@ -713,7 +713,7 @@ void Connection::send( uint16_t flags, string s )
 
   ssize_t bytes_sent = -1;
   if ( server ) {
-    Packet px = new_packet( last_flow, 0, s );
+    Packet px = new_packet( last_flow, flags, s );
 
     string p = px.tostring( &session );
 
@@ -738,7 +738,7 @@ void Connection::send( uint16_t flags, string s )
 	  it != flows.end();
 	  it++ ) {
       Flow *flow = it->second;
-      Packet px = new_packet( flow, 0, s );
+      Packet px = new_packet( flow, flags, s );
       string p = px.tostring( &session );
       log_dbg( LOG_DEBUG_COMMON, "Sending data on %hu seq %llu (%s -> %s, SRTT = %dms)",
 	       flow->flow_id, (long long unsigned) flow->next_seq - 1, flow->src.tostring().c_str(),
@@ -764,7 +764,7 @@ void Connection::send( uint16_t flags, string s )
 	  it != flows_vect.end();
 	  it ++ ) {
       Flow *flow = it->second;
-      Packet px = new_packet( flow, 0, s );
+      Packet px = new_packet( flow, flags, s );
       string p = px.tostring( &session );
       log_dbg( LOG_DEBUG_COMMON, "Sending data on %hu seq %llu (%s -> %s, SRTT = %dms)",
 	       flow->flow_id, (long long unsigned) flow->next_seq - 1, flow->src.tostring().c_str(),
