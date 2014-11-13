@@ -52,9 +52,6 @@ std::vector< Addr > Addresses::get_host_addresses( int *has_change )
   init_iterator( &iter );
   while ( NULL != (kaddr = (struct kernel_address *)get_next( kaddrs, &iter )) ) {
     Addr tmp = Addr( kaddr->sa );
-    if ( tmp.is_loopback() || tmp.is_linklocal() ) {
-      continue;
-    }
     log_dbg( LOG_DEBUG_COMMON, "Host address read: %s.\n", tmp.tostring().c_str() );
     addr.insert( tmp );
   }
