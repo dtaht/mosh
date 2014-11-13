@@ -220,10 +220,17 @@ void Connection::check_flows( bool remote_has_changed ) {
   for ( std::vector< Addr >::const_iterator la_it = addresses.begin();
 	la_it != addresses.end();
 	la_it++ ) {
+
+    if ( la_it->is_linklocal() ) {
+      continue; /* I don't want to search interfaces to bind for... let the system do the trick. */
+    }
+
     for ( std::vector< Addr >::const_iterator ra_it = remote_addr.begin();
 	  ra_it != remote_addr.end();
 	  ra_it++ ) {
-      if ( la_it->sa.sa_family == ra_it->sa.sa_family ) {
+      if ( la_it->sa.sa_family == ra_it->sa.sa_family &&
+	   la_it->is_loopback() == ra_it->is_loopback() &&
+	   ( !ra_it->is_linklocal() || la_it->is_any() ) ) {
 	if ( ! flow_exists( *la_it, *ra_it ) ) {
 	  Flow *flow_info = new Flow( *la_it, *ra_it );
 	  flows[ flow_info->flow_id ] = flow_info;
@@ -234,7 +241,9 @@ void Connection::check_flows( bool remote_has_changed ) {
     for ( std::vector< Addr >::const_iterator ra_it = received_remote_addr.begin();
 	  ra_it != received_remote_addr.end();
 	  ra_it++ ) {
-      if ( la_it->sa.sa_family == ra_it->sa.sa_family ) {
+      if ( la_it->sa.sa_family == ra_it->sa.sa_family &&
+	   la_it->is_loopback() == ra_it->is_loopback() &&
+	   ( !ra_it->is_linklocal() || la_it->is_any() ) ) {
 	if ( ! flow_exists( *la_it, *ra_it ) ) {
 	  Flow *flow_info = new Flow( *la_it, *ra_it );
 	  flows[ flow_info->flow_id ] = flow_info;

@@ -113,6 +113,11 @@ namespace Network {
 
     string tostring( void ) const;
 
+    bool is_any( void ) const {
+      return ( sa.sa_family == AF_INET && sin.sin_addr.s_addr == INADDR_ANY ) ||
+	( sa.sa_family == AF_INET6 && memcmp( &sin6.sin6_addr, &in6addr_any, 16 ) == 0 );
+    }
+
     bool is_loopback( void ) const {
       return ( sa.sa_family == AF_INET && IN_IS_ADDR_LOOPBACK( &sin.sin_addr ) ) ||
 	( sa.sa_family == AF_INET6 && IN6_IS_ADDR_LOOPBACK( &sin6.sin6_addr ) );
