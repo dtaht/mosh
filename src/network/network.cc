@@ -245,18 +245,19 @@ void Connection::check_flows( bool remote_has_changed ) {
 }
 
 uint16_t Connection::Flow::next_flow_id = 0;
+const Connection::Flow Connection::Flow::defaults;
 
 Connection::Flow::Flow( const Addr &s_src, const Addr &s_dst )
   : src( s_src ),
     dst( s_dst ),
-    MTU( DEFAULT_SEND_MTU ),
-    next_seq( 0 ),
-    expected_receiver_seq( 0 ),
-    saved_timestamp( -1 ),
-    saved_timestamp_received_at( 0 ),
-    RTT_hit( false ),
-    SRTT( 1000 ),
-    RTTVAR( 500 ),
+    MTU( defaults.MTU ),
+    next_seq( defaults.next_seq ),
+    expected_receiver_seq( defaults.expected_receiver_seq ),
+    saved_timestamp( defaults.saved_timestamp ),
+    saved_timestamp_received_at( defaults.saved_timestamp_received_at ),
+    RTT_hit( defaults.RTT_hit ),
+    SRTT( defaults.SRTT ),
+    RTTVAR( defaults.RTTVAR ),
     flow_id( next_flow_id++ )
 {
   if ( flow_id == 0xFFFF ) {
@@ -268,14 +269,14 @@ Connection::Flow::Flow( const Addr &s_src, const Addr &s_dst )
 Connection::Flow::Flow( const Addr &s_src, const Addr &s_dst, uint16_t id )
   : src( s_src ),
     dst( s_dst ),
-    MTU( DEFAULT_SEND_MTU ),
-    next_seq( 0 ),
-    expected_receiver_seq( 0 ),
-    saved_timestamp( -1 ),
-    saved_timestamp_received_at( 0 ),
-    RTT_hit( false ),
-    SRTT( 1000 ),
-    RTTVAR( 500 ),
+    MTU( defaults.MTU ),
+    next_seq( defaults.next_seq ),
+    expected_receiver_seq( defaults.expected_receiver_seq ),
+    saved_timestamp( defaults.saved_timestamp ),
+    saved_timestamp_received_at( defaults.saved_timestamp_received_at ),
+    RTT_hit( defaults.RTT_hit ),
+    SRTT( defaults.SRTT ),
+    RTTVAR( defaults.RTTVAR ),
     flow_id( id )
 {
   assert( !next_flow_id ); /* The server should not have initialized any flow. */
@@ -1122,9 +1123,7 @@ uint16_t Network::timestamp_diff( uint16_t tsnew, uint16_t tsold )
 
 uint64_t Connection::timeout( void ) const
 {
-  Addr empty;
-  Flow defaults( empty, empty );
-  Flow *flow = last_flow ? last_flow : &defaults;
+  const Flow *flow = last_flow ? last_flow : &Flow::defaults;
   uint64_t RTO = lrint( ceil( flow->SRTT + 4 * flow->RTTVAR ) );
   if ( RTO < MIN_RTO ) {
     RTO = MIN_RTO;

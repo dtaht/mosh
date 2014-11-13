@@ -113,7 +113,14 @@ namespace Network {
     class Flow {
     private:
       static uint16_t next_flow_id;
+      Flow( void )
+	: src( Addr() ), dst( Addr() ), MTU( DEFAULT_SEND_MTU ), next_seq( 0 ),
+	expected_receiver_seq( 0 ), saved_timestamp( -1 ), saved_timestamp_received_at( 0 ),
+	RTT_hit( false ), SRTT( 1000 ), RTTVAR( 500 ), flow_id( 0 )
+      {}
+
     public:
+      static const Flow defaults; /* for default values only */
       Addr src;
       Addr dst;
       int MTU;
