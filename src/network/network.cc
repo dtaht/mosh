@@ -554,7 +554,7 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
   socks6.push_back( Socket( PF_INET6, 0, 0 ) );
 
   /* Ask the server what are its addresses. */
-  send( ADDR_FLAG, string( "" ) );
+  check_remote_addr();
   last_addr_request = timestamp();
   send_probes(); /* This should check all flows. */
 }
