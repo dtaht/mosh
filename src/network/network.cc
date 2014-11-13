@@ -442,11 +442,11 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
     socks.push_back( Socket( PF_INET, search_low, search_high ) );
     try {
       socks6.push_back( Socket( PF_INET6, socks.back().port, socks.back().port ) );
+      break;
     } catch ( const NetworkException& e ) {
       /* ok, try to bind both the sockets to the next port number. */
       search_low = socks.back().port + 1;
       socks.pop_back();
-      continue;
     }
   }
 
