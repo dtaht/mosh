@@ -148,7 +148,7 @@ namespace Network {
       int _fd;
 
     public:
-      int port;
+      int port; /* host byte order */
       int fd( void ) const { return _fd; }
       bool try_bind( int sock, Addr addrToBind, int port_low, int port_high );
 
