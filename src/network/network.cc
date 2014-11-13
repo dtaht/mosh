@@ -217,9 +217,17 @@ void Connection::check_flows( bool remote_has_changed ) {
     return;
   }
 
-  for ( std::vector< Addr >::const_iterator la_it = addresses.begin();
+  for ( std::vector< Addr >::iterator la_it = addresses.begin();
 	la_it != addresses.end();
 	la_it++ ) {
+
+    if ( la_it->sa.sa_family == AF_INET ) {
+      la_it->sin.sin_port = htons( socks.back().port );
+    } else if ( la_it->sa.sa_family == AF_INET6 ) {
+      la_it->sin6.sin6_port = htons( socks6.back().port );
+    } else {
+      continue;
+    }
 
     if ( la_it->is_linklocal() ) {
       continue; /* I don't want to search interfaces to bind for... let the system do the trick. */
@@ -557,10 +565,10 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
     }
   }
 
-  check_flows( true );
-
   socks.push_back( Socket( PF_INET, 0, 0 ) );
   socks6.push_back( Socket( PF_INET6, 0, 0 ) );
+
+  check_flows( true );
 
   /* Ask the server what are its addresses. */
   check_remote_addr();
