@@ -904,19 +904,23 @@ string Connection::recv_one( int sock_to_recv )
 	struct in_pktinfo *info = (struct in_pktinfo *)CMSG_DATA( cmsghdr );
 	packet_local_addr.sin.sin_addr = info->ipi_addr;
 	packet_local_addr.sin.sin_family = AF_INET;
+	packet_local_addr.sin.sin_port = socks.back().port;
 
 #elif defined IP_RECVDSTADDR
       } else if ( cmsghdr->cmsg_type == IP_RECVDSTADDR ) {
 	struct in_addr *info = (struct in_addr *)CMSG_DATA( cmsghdr );
 	packet_local_addr.sin.sin_addr = *info;
 	packet_local_addr.sin.sin_family = AF_INET;
+	packet_local_addr.sin.sin_port = socks.back().port;
 
 #endif
       }
     } else if ( cmsghdr->cmsg_level == IPPROTO_IPV6 ) {
       if ( cmsghdr->cmsg_type == IPV6_PKTINFO ) {
 	struct in6_pktinfo *info = (struct in6_pktinfo *)CMSG_DATA( cmsghdr );
-	memcpy( &packet_local_addr.sin6, &info->ipi6_addr, sizeof( struct in6_addr ) );
+	memcpy( &packet_local_addr.sin6.sin6_addr, &info->ipi6_addr, sizeof( struct in6_addr ) );
+	packet_local_addr.sa.sa_family = AF_INET6;
+	packet_local_addr.sin6.sin6_port = socks6.back().port;
       } else if ( cmsghdr->cmsg_type == IPV6_TCLASS ) {
 	uint8_t tclass = *(uint8_t *)CMSG_DATA( cmsghdr );
 	if ( (tclass & 0x03) == 0x03 ) {
