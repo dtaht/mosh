@@ -460,9 +460,9 @@ bool Connection::Socket::try_bind( int sock, Addr local_addr, int port_low, int 
 {
   for ( int i = port_low; i <= port_high; i++ ) {
     if ( local_addr.sa.sa_family == AF_INET ) {
-      port = local_addr.sin.sin_port = htons( i );
+      local_addr.sin.sin_port = htons( port = i );
     } else if ( local_addr.sa.sa_family == AF_INET6 ) {
-      port = local_addr.sin6.sin6_port = htons( i );
+      local_addr.sin6.sin6_port = htons( port = i );
     } else {
       throw NetworkException( "try_bind: Invalid address family specified", EINVAL );
       assert( false );
@@ -470,16 +470,16 @@ bool Connection::Socket::try_bind( int sock, Addr local_addr, int port_low, int 
     }
 
     if ( bind( sock, &local_addr.sa, local_addr.addrlen ) == 0 ) {
-      if ( port == 0 ) {
-	socklen_t tmp;
+      if ( port == 0 ) { /* retreive the port when not specifying it (client) */
+	socklen_t tmp = local_addr.addrlen;
 	if ( getsockname( sock, &local_addr.sa, &tmp ) < 0 ) {
 	  throw NetworkException( "bind - getsockname", errno );
 	}
 	local_addr.addrlen = tmp;
 	if ( local_addr.sa.sa_family == AF_INET ) {
-	  port = local_addr.sin.sin_port;
+	  port = ntohs( local_addr.sin.sin_port );
 	} else if ( local_addr.sa.sa_family == AF_INET6 ) {
-	  port = local_addr.sin6.sin6_port;
+	  port = ntohs( local_addr.sin6.sin6_port );
 	}
       }
       log_dbg( LOG_DEBUG_COMMON, "New socket bound to %s.\n", local_addr.tostring().c_str() );
@@ -604,7 +604,7 @@ void Connection::send_addresses( void )
 	la_it++ ) {
     uint8_t len;
     uint8_t family;
-    uint16_t port = last_flow->src.sin.sin_port;
+    uint16_t port = htons( socks.back().port );
     string addr;
     int addrlen;
     /* Set our listening port. */
@@ -1141,7 +1141,8 @@ Connection::Socket::~Socket()
 }
 
 Connection::Socket::Socket( const Socket & other )
-  : _fd( dup( other._fd ) )
+  : _fd( dup( other._fd ) ),
+    port( other.port )
 {
   if ( _fd < 0 ) {
     throw NetworkException( "socket", errno );
