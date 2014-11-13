@@ -784,6 +784,9 @@ void Connection::send( uint16_t flags, string s )
 			       p.data(), p.size(), MSG_DONTWAIT, flow->src, flow->dst );
       if ( bytes_sent < 0 ) {
 	flow->SRTT = MIN( flow->SRTT + 1000, 10000);
+	if ( errno == EMSGSIZE ) {
+	  flow->MTU = 500; /* payload MTU of last resort */
+	}
  	log_dbg( LOG_PERROR, " failed" );
       } else if ( bytes_sent == static_cast<ssize_t>( p.size() ) ) {
 	have_send_exception = false;
@@ -810,6 +813,10 @@ void Connection::send( uint16_t flags, string s )
 			       p.data(), p.size(), MSG_DONTWAIT, flow->src, flow->dst );
       if ( bytes_sent < 0 ) {
 	flow->SRTT = MIN( flow->SRTT + 1000, 10000);
+	if ( errno == EMSGSIZE ) {
+	  flow->MTU = 500; /* payload MTU of last resort */
+	}
+ 	log_dbg( LOG_PERROR, " failed" );
       } else if ( bytes_sent == static_cast<ssize_t>( p.size() ) ){
 	have_send_exception = false;
 	if ( last_flow != flow ) {
@@ -835,10 +842,6 @@ void Connection::send( uint16_t flags, string s )
        sendmsg() success is not very meaningful because packets can be lost in
        flight anyway. */
     send_exception = NetworkException( "sendmsg", errno );
-
-    if ( errno == EMSGSIZE ) {
-      last_flow->MTU = 500; /* payload MTU of last resort */
-    }
   }
 
   uint64_t now = timestamp();
