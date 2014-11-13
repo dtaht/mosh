@@ -826,6 +826,7 @@ string Connection::recv( void )
   while ( true ) {
     if ( it == socks.end() ) {
       it = socks6.begin();
+      if ( socks6.size() == 0 ) continue;
     } else if ( it == socks6.end() ) {
       break;
     }
@@ -833,18 +834,15 @@ string Connection::recv( void )
     string payload;
     try {
       payload = recv_one( it->fd() );
+      prune_sockets();
+      return payload;
     } catch ( NetworkException & e ) {
-      if ( (e.the_errno == EAGAIN)
-	   || (e.the_errno == EWOULDBLOCK) ) {
-	continue;
-      } else {
+      if ( (e.the_errno != EAGAIN)
+	   && (e.the_errno != EWOULDBLOCK) ) {
 	throw;
       }
     }
-
-    /* succeeded */
-    prune_sockets();
-    return payload;
+    it++;
   }
   assert( false );
   return "";
