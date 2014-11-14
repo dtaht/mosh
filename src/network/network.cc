@@ -236,7 +236,7 @@ void Connection::check_flows( bool remote_has_changed ) {
 
     if ( la_it->sa.sa_family == AF_INET ) {
       la_it->sin.sin_port = htons( socks.back().port );
-    } else if ( la_it->sa.sa_family == AF_INET ) {
+    } else if ( la_it->sa.sa_family == AF_INET6 ) {
       la_it->sin6.sin6_port = htons( socks6.back().port );
     } else {
       continue;
