@@ -900,6 +900,7 @@ string Connection::recv_one( int sock_to_recv )
   Addr packet_local_addr;  /* == dst of the IP packet */
   struct msghdr header;
   struct iovec msg_iovec;
+  uint64_t now = timestamp();
 
   char msg_payload[ Session::RECEIVE_MTU ];
   char msg_control[ Session::RECEIVE_MTU ];
@@ -980,6 +981,7 @@ string Connection::recv_one( int sock_to_recv )
   Packet p( string( msg_payload, received_len ), &session );
 
   Flow *flow_info = flows[ p.flow_id ];
+  log_dbg( LOG_DEBUG_COMMON, "timestamp = %llu\n", (long long unsigned)now );
   log_dbg( LOG_DEBUG_COMMON, "Receiving message on flow %d seq %llu (%s <- %s): ", (int) p.flow_id,
 	   (long long unsigned)p.seq, packet_local_addr.tostring().c_str(), packet_remote_addr.tostring().c_str() );
   if ( !flow_info ) {
@@ -996,7 +998,7 @@ string Connection::recv_one( int sock_to_recv )
 
     if ( p.timestamp != uint16_t(-1) ) {
       flow_info->saved_timestamp = p.timestamp;
-      flow_info->saved_timestamp_received_at = timestamp();
+      flow_info->saved_timestamp_received_at = now;
 
       if ( congestion_experienced ) {
 	/* signal counterparty to slow down */
