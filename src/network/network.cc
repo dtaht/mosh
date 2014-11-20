@@ -641,6 +641,9 @@ void Connection::send_addresses( void )
   for ( std::vector< Addr >::const_iterator la_it = addresses.begin();
 	la_it != addresses.end();
 	la_it++ ) {
+    if ( la_it->is_loopback() ) {
+      continue;
+    }
     uint8_t len;
     uint8_t family;
     uint16_t port = htons( socks.back().port );
