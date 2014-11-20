@@ -1039,7 +1039,7 @@ string Connection::recv_one( int sock_to_recv )
     }
 
     /* auto-adjust to remote host */
-    last_heard = timestamp();
+    flow_info->last_heard = last_heard = timestamp();
 
     if ( server ) { /* only client can roam */
       bool has_roam = last_flow != flow_info;
