@@ -988,6 +988,11 @@ string Connection::recv_one( int sock_to_recv )
     fatal_assert( server ); /* if client, then server answers with an unknown flow ID. This is terrific. */
     flow_info = new Flow( packet_local_addr, packet_remote_addr, p.flow_id );
     flows[ p.flow_id ] = flow_info;
+  } else if ( server ) {
+    /* the destination may change, especially when client hop port.  Not sure
+       about the source, but anyway... */
+    flow_info->src = packet_local_addr;
+    flow_info->dst = packet_remote_addr;
   }
 
   dos_assert( p.direction == (server ? TO_SERVER : TO_CLIENT) ); /* prevent malicious playback to sender */
