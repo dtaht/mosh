@@ -117,7 +117,7 @@ namespace Network {
       Flow( void )
 	: src( Addr() ), dst( Addr() ), MTU( DEFAULT_SEND_MTU ), next_seq( 0 ),
 	expected_receiver_seq( 0 ), saved_timestamp( -1 ), saved_timestamp_received_at( 0 ),
-	first_sent_message_since_reply( -1), last_heard( -1 ), next_probe( 0 ),
+	first_sent_message_since_reply( 0 ), last_heard( 0 ), next_probe( 0 ),
 	RTT_hit( false ), SRTT( 1000 ), RTTVAR( 500 ), flow_id( 0 )
       {}
 
