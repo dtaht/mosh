@@ -137,17 +137,19 @@ Packet Connection::new_packet( Flow *flow, uint16_t flags, string &s_payload )
     flow->saved_timestamp_received_at = 0;
   }
 
-  unsigned int delay = MAX( (int)flow->SRTT + 4 * flow->RTTVAR, MIN_PROBE_INTERVAL );
-  if ( flow->first_sent_message_since_reply <= flow->last_heard ) {
-    flow->first_sent_message_since_reply = now;
-  } else if ( delay < now - flow->first_sent_message_since_reply ) {
-    flow->SRTT = now - flow->first_sent_message_since_reply;
-    log_dbg( LOG_DEBUG_COMMON, "Flow %hu seems idle: SRTT = %dms.\n",
-	     flow->flow_id, (int)flow->SRTT );
-  }
+  if ( !server ) {
+    unsigned int delay = MAX( (int)flow->SRTT + 4 * flow->RTTVAR, MIN_PROBE_INTERVAL );
+    if ( flow->first_sent_message_since_reply <= flow->last_heard ) {
+      flow->first_sent_message_since_reply = now;
+    } else if ( delay < now - flow->first_sent_message_since_reply ) {
+      flow->SRTT = now - flow->first_sent_message_since_reply;
+      log_dbg( LOG_DEBUG_COMMON, "Flow %hu seems idle: SRTT = %dms.\n",
+               flow->flow_id, (int)flow->SRTT );
+    }
 
-  if ( flags & PROBE_FLAG ) {
-    flow->next_probe = now + delay;
+    if ( flags & PROBE_FLAG ) {
+      flow->next_probe = now + delay;
+    }
   }
 
   Packet p( flow->next_seq++, direction, timestamp16(), outgoing_timestamp_reply,
