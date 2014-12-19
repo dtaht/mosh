@@ -343,10 +343,11 @@ Connection::Socket::Socket( int family, int lower_port, int higher_port )
     }
 #endif
 
-    int dscp = 0x02; /* ECN-capable transport only */
+    int dscp = 0x92; /* ECN-capable transport only */
     if ( setsockopt( _fd, IPPROTO_IP, IP_TOS, &dscp, sizeof( dscp )) < 0 ) {
       //    perror( "setsockopt( IP_TOS )" );
     }
+
 
 #ifdef HAVE_IP_RECVTOS
     if ( setsockopt( _fd, IPPROTO_IP, IP_RECVTOS, &on, sizeof( on ) ) < 0 ) {
@@ -379,6 +380,12 @@ Connection::Socket::Socket( int family, int lower_port, int higher_port )
     if ( setsockopt( _fd, IPPROTO_IPV6, IPV6_RECVTCLASS, &on, sizeof( on ) ) < 0 ) {
       perror( "setsockopt( IPV6_RECVTCLASS on )" );
     }
+
+   /* set ecn on sent datagrams */
+   int dscp = 0x92; /* ECN-capable transport only */
+   if ( setsockopt( _fd, IPPROTO_IPV6, IPV6_TCLASS, &dscp, sizeof (dscp)) < 0 ) {
+      //  perror( "setsockopt( IPV6_TCLASS )" );
+   }
 
     /* Tell me on which address the msg has been received. */
     if ( setsockopt( _fd, IPPROTO_IPV6, IPV6_RECVPKTINFO, &on, sizeof( on ) ) ) {
