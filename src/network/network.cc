@@ -788,10 +788,11 @@ void Connection::send( uint16_t flags, string s )
       bytes_sent = sendfromto( flow->dst.sa.sa_family == AF_INET ? sock() : sock6(),
 			       p.data(), p.size(), MSG_DONTWAIT, flow->src, flow->dst );
       if ( bytes_sent < 0 ) {
-	flow->SRTT = MIN( flow->SRTT + 1000, 10000);
 	if ( errno == EMSGSIZE ) {
 	  flow->MTU = 500; /* payload MTU of last resort */
-	}
+	} else {
+          flow->SRTT = MIN( flow->SRTT + 1000, 10000);
+        }
  	log_dbg( LOG_PERROR, " failed" );
       } else if ( bytes_sent == static_cast<ssize_t>( p.size() ) ) {
 	have_send_exception = false;
@@ -817,10 +818,11 @@ void Connection::send( uint16_t flags, string s )
       bytes_sent = sendfromto( flow->dst.sa.sa_family == AF_INET ? sock() : sock6(),
 			       p.data(), p.size(), MSG_DONTWAIT, flow->src, flow->dst );
       if ( bytes_sent < 0 ) {
-	flow->SRTT = MIN( flow->SRTT + 1000, 10000);
 	if ( errno == EMSGSIZE ) {
 	  flow->MTU = 500; /* payload MTU of last resort */
-	}
+	} else {
+          flow->SRTT = MIN( flow->SRTT + 1000, 10000);
+        }
  	log_dbg( LOG_PERROR, " failed" );
       } else if ( bytes_sent == static_cast<ssize_t>( p.size() ) ){
 	have_send_exception = false;
