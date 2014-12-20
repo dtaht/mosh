@@ -157,7 +157,7 @@ namespace Network {
       int fd( void ) const { return _fd; }
       bool try_bind( int sock, Addr addrToBind, int port_low, int port_high );
 
-      Socket( int family, int lower_port, int higher_port );
+      Socket( int family, int sock_flag, int lower_port, int higher_port );
       ~Socket();
 
       Socket( const Socket & other );

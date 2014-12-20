@@ -165,8 +165,8 @@ void Connection::hop_port( void )
 
   setup();
   assert( flows.size() != 0 );
-  socks.push_back( Socket( PF_INET, 0, 0 ) );
-  socks6.push_back( Socket( PF_INET6, 0, 0 ) );
+  socks.push_back( Socket( PF_INET, 0, 0, 0 ) );
+  socks6.push_back( Socket( PF_INET6, 0, 0, 0 ) );
 
   prune_sockets();
 }
@@ -320,8 +320,8 @@ Connection::Flow::Flow( const Addr &s_src, const Addr &s_dst, uint16_t id )
   assert( !next_flow_id ); /* The server should not have initialized any flow. */
 }
 
-Connection::Socket::Socket( int family, int lower_port, int higher_port )
-  : _fd( socket( family, SOCK_DGRAM, 0 ) ),
+Connection::Socket::Socket( int family, int sock_flag, int lower_port, int higher_port )
+  : _fd( socket( family, SOCK_DGRAM, sock_flag ) ),
     port( 0 )
 {
   if ( _fd < 0 ) {
@@ -367,6 +367,15 @@ Connection::Socket::Socket( int family, int lower_port, int higher_port )
 #else
 #warning "Can't get my local address on packet reception."
 #endif
+#if defined(IPPROTO_UDPLITE)
+   if(sock_flag == IPPROTO_UDPLITE) {
+	fprintf(stderr,"trying udplite");
+   //	int val = 20; // I dont know the right value for val yet
+   //   setsockopt(s, SOL_UDPLITE, UDPLITE_SEND_CSCOV, &val, sizeof(int));
+   //	setsockopt(s, SOL_UDPLITE, UDPLITE_RECV_CSCOV, &val, sizeof(int));
+   }
+#endif
+
 
   } else if (family == PF_INET6 ) {
     /* No hybrid socket. */
@@ -394,6 +403,15 @@ Connection::Socket::Socket( int family, int lower_port, int higher_port )
   } else {
     throw NetworkException( "Unknown protocol family", 0 );
   }
+#if defined(IPPROTO_UDPLITE)
+   if(sock_flag == IPPROTO_UDPLITE) {
+	fprintf(stderr,"trying udplite");
+   //	int val = 20; // I dont know the right value for val yet
+   //   setsockopt(s, SOL_UDPLITE, UDPLITE_SEND_CSCOV, &val, sizeof(int));
+   //	setsockopt(s, SOL_UDPLITE, UDPLITE_RECV_CSCOV, &val, sizeof(int));
+   }
+#endif
+
 }
 
 void Connection::setup( void )
@@ -484,9 +502,9 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
   int search_high = desired_port_high ? desired_port_high : PORT_RANGE_HIGH;
 
   while ( search_low <= search_high ) {
-    socks.push_back( Socket( PF_INET, search_low, search_high ) );
+    socks.push_back( Socket( PF_INET, 0, search_low, search_high ) );
     try {
-      socks6.push_back( Socket( PF_INET6, socks.back().port, socks.back().port ) );
+      socks6.push_back( Socket( PF_INET6, 0, socks.back().port, socks.back().port ) );
       break;
     } catch ( const NetworkException& e ) {
       /* ok, try to bind both the sockets to the next port number. */
@@ -494,6 +512,25 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
       socks.pop_back();
     }
   }
+
+#if defined(IPPROTO_UDPLITE)
+
+  search_low = desired_port_low ? desired_port_low : PORT_RANGE_LOW;
+  search_high = desired_port_high ? desired_port_high : PORT_RANGE_HIGH;
+
+  while ( search_low <= search_high ) {
+    socks.push_back( Socket( PF_INET, IPPROTO_UDPLITE, search_low, search_high ) );
+    try {
+      socks6.push_back( Socket( PF_INET6, IPPROTO_UDPLITE, socks.back().port, socks.back().port ) );
+      break;
+    } catch ( const NetworkException& e ) {
+      /* ok, try to bind both the sockets to the next port number. */
+      search_low = socks.back().port + 1;
+      socks.pop_back();
+    }
+  }
+
+#endif
 
   if ( socks.empty() || socks6.empty() ) {
     fprintf( stderr, "Error binding to any interface\n" );
@@ -593,8 +630,8 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
     }
   }
 
-  socks.push_back( Socket( PF_INET, 0, 0 ) );
-  socks6.push_back( Socket( PF_INET6, 0, 0 ) );
+  socks.push_back( Socket( PF_INET, 0, 0, 0 ) );
+  socks6.push_back( Socket( PF_INET6, 0, 0, 0 ) );
 
   check_flows( true );
 
