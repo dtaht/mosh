@@ -165,6 +165,7 @@ namespace Network {
     std::vector< Addr > get_host_addresses( int *has_change );
     int get_fd( void ); /* to monitor things */
     uint64_t last_check( void ) { return last_addr_check; }
+    static bool compatible( const Addr &src, const Addr &dest );
   };
 }
 
