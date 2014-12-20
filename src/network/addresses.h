@@ -127,6 +127,14 @@ namespace Network {
       return sa.sa_family == AF_INET6 && IN6_IS_ADDR_LINKLOCAL( &sin6.sin6_addr );
     }
 
+    bool is_hip( void ) const { /* 2001:10::/28 */
+      return sa.sa_family == AF_INET6 &&
+        sin6.sin6_addr.s6_addr[0] == 0x20 &&
+        sin6.sin6_addr.s6_addr[1] == 0x01 &&
+        sin6.sin6_addr.s6_addr[2] == 0x10 &&
+        (sin6.sin6_addr.s6_addr[3] & 0xF0) == 0x00;
+    }
+
     bool is_v4mapped( void ) const {
       return sa.sa_family == AF_INET6 && memcmp( v4prefix, &sin6.sin6_addr, 12 ) == 0;
     }
