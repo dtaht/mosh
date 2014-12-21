@@ -1,0 +1,4 @@
+* TODO Fix udplite and udp to respond on the right ports
+  right now it seems to be a matter of luck
+* TODO Do saner source address selection 
+  take a better guess at the set of ip addresses and protocols to try
