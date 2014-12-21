@@ -501,6 +501,7 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
   int search_low = desired_port_low ? desired_port_low : PORT_RANGE_LOW;
   int search_high = desired_port_high ? desired_port_high : PORT_RANGE_HIGH;
 
+
   while ( search_low <= search_high ) {
     socks.push_back( Socket( PF_INET, 0, search_low, search_high ) );
     try {
@@ -513,10 +514,13 @@ Connection::Connection( const char *desired_ip, const char *desired_port ) /* se
     }
   }
 
+/* Use a different port for udplite just to confuse matters */
+
 #if defined(IPPROTO_UDPLITE)
 
-  search_low = desired_port_low ? desired_port_low : PORT_RANGE_LOW;
-  search_high = desired_port_high ? desired_port_high : PORT_RANGE_HIGH;
+  if(search_low > search_high) { 
+	printf("something was really bogus about the other query\n");
+  }
 
   while ( search_low <= search_high ) {
     socks.push_back( Socket( PF_INET, IPPROTO_UDPLITE, search_low, search_high ) );
@@ -630,9 +634,14 @@ Connection::Connection( const char *key_str, const char *ip, const char *port ) 
     }
   }
 
+
   socks.push_back( Socket( PF_INET, 0, 0, 0 ) );
   socks6.push_back( Socket( PF_INET6, 0, 0, 0 ) );
 
+#if defined(IPPROTO_UDPLITE)
+  socks.push_back( Socket( PF_INET, IPPROTO_UDPLITE, 0, 0 ) );
+  socks6.push_back( Socket( PF_INET6, IPPROTO_UDPLITE, 0, 0 ) );
+#endif
   check_flows( true );
 
   /* Ask the server what are its addresses. */
